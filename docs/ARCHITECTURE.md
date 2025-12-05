@@ -102,6 +102,46 @@ flowchart LR
     G --> H[ArgoCD syncs all apps]
 ```
 
+## Deployment Chain
+
+The complete dependency chain showing how repositories connect:
+
+```mermaid
+flowchart LR
+    A[app-poly-gitops-infra] --> B[app-poly-gitops-k8s]
+    B --> C[app-poly-gitops-helm]
+    C --> D[Docker image]
+    D --> E[app-poly-gitops-fastapi]
+
+    F[app-poly-gitops-crewai] -.->|monitors| B
+    F -.->|monitors| C
+    F -.->|monitors| D
+```
+
+## Startup Sequence
+
+| Step | Repository | Action |
+|------|------------|--------|
+| 1 | **infra** | `task up` → Terraform creates k8s → installs ArgoCD |
+| 2 | **k8s** | ArgoCD syncs manifests → creates Applications |
+| 3 | **helm** | ArgoCD renders Helm chart with values from k8s |
+| 4 | **fastapi** | CI builds Docker → pushes to ghcr.io |
+| 5 | **k8s** | Image Updater detects new tag → commits to k8s |
+| 6 | **crewai** | Monitors that everything works |
+
+## Dependency Tree
+
+```
+infra
+└── creates cluster + ArgoCD
+    └── k8s (ArgoCD Applications)
+        └── helm (Helm charts)
+            └── Docker image
+                └── fastapi (code)
+
+crewai → observes all of the above
+```
+
 ## Related Links
 
 - [app-poly-gitops-infra](https://github.com/justgithubaccount/app-poly-gitops-infra) - This repository
