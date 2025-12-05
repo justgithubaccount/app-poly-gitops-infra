@@ -6,6 +6,8 @@ vars:
   TF_DIR: terraform/timeweb
   KUBECONFIG_PATH: ~/.kube/timeweb-config
 
+dotenv: ['.env']
+
 env:
   KUBECONFIG: "{{.KUBECONFIG_PATH}}"
 

@@ -22,7 +22,6 @@ kubeconfig*
 *.pem
 *.key
 .env
-.env.*
 secrets/
 *secret*
 

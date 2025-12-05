@@ -14,12 +14,19 @@ Infrastructure provisioning and ArgoCD bootstrap for GitOps platform.
 ## Quick Start
 
 ```bash
-# Set environment variables
+# 1. Copy .env.example to .env and fill in your credentials
+cp .env.example .env
+# Edit .env with your tokens
+
+# 2. Full setup (Taskfile will automatically load .env)
+task up
+```
+
+Alternative (manual export):
+```bash
 export TF_VAR_timeweb_token="your-timeweb-token"
 export AWS_ACCESS_KEY_ID="s3-access-key"
 export AWS_SECRET_ACCESS_KEY="s3-secret-key"
-
-# Full setup
 task up
 ```
 
