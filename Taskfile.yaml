@@ -1,0 +1,83 @@
+# https://taskfile.dev
+version: '3'
+
+vars:
+  ARGOCD_VERSION: "7.7.10"
+  TF_DIR: terraform/timeweb
+  KUBECONFIG_PATH: ~/.kube/timeweb-config
+
+env:
+  KUBECONFIG: "{{.KUBECONFIG_PATH}}"
+
+tasks:
+  default:
+    desc: "Show available tasks"
+    cmds:
+      - task --list
+
+  # Infrastructure
+  init:
+    desc: "Initialize terraform and create cluster"
+    cmds:
+      - terraform -chdir={{.TF_DIR}} init
+      - terraform -chdir={{.TF_DIR}} apply -auto-approve
+      - task: kubeconfig
+
+  plan:
+    desc: "Show terraform plan"
+    cmds:
+      - terraform -chdir={{.TF_DIR}} plan
+
+  kubeconfig:
+    desc: "Get kubeconfig from Timeweb"
+    cmds:
+      - mkdir -p ~/.kube
+      - twc k8s kubeconfig get --cluster-id $(terraform -chdir={{.TF_DIR}} output -raw cluster_id) > {{.KUBECONFIG_PATH}}
+      - chmod 600 {{.KUBECONFIG_PATH}}
+      - echo "Kubeconfig saved to {{.KUBECONFIG_PATH}}"
+
+  # ArgoCD Bootstrap
+  bootstrap:
+    desc: "Bootstrap ArgoCD in cluster"
+    cmds:
+      - kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+      - helm repo add argo https://argoproj.github.io/argo-helm
+      - helm repo update
+      - |
+        helm upgrade --install argocd argo/argo-cd \
+          --namespace argocd \
+          --version {{.ARGOCD_VERSION}} \
+          --values bootstrap/argocd/values.yaml \
+          --wait --timeout 10m
+
+  argocd-password:
+    desc: "Get ArgoCD admin password"
+    cmds:
+      - kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
+
+  argocd-port-forward:
+    desc: "Port-forward ArgoCD UI to localhost:8080"
+    cmds:
+      - kubectl port-forward svc/argocd-server -n argocd 8080:443
+
+  # GitOps
+  app-of-apps:
+    desc: "Deploy root Application (app-of-apps)"
+    cmds:
+      - kubectl apply -f https://raw.githubusercontent.com/justgithubaccount/app-poly-gitops-k8s/main/platform/core/cluster-bootstrap/app-of-apps.yaml
+
+  # Cleanup
+  destroy:
+    desc: "Destroy infrastructure (DANGER!)"
+    prompt: "This will destroy all infrastructure. Are you sure?"
+    cmds:
+      - terraform -chdir={{.TF_DIR}} destroy -auto-approve
+
+  # Full workflow
+  up:
+    desc: "Full setup: init + bootstrap + app-of-apps"
+    cmds:
+      - task: init
+      - task: bootstrap
+      - task: app-of-apps
+      - task: argocd-password

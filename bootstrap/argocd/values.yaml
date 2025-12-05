@@ -1,0 +1,65 @@
+global:
+  domain: argocd.syncjob.ru
+
+configs:
+  cm:
+    admin.enabled: true
+    timeout.reconciliation: 30s
+    timeout.hard.reconciliation: 0s
+    kustomize.buildOptions: --enable-helm
+
+  params:
+    server.insecure: "true"
+
+  repositories:
+    gitops-k8s:
+      url: https://github.com/justgithubaccount/app-poly-gitops-k8s
+    gitops-helm:
+      url: https://github.com/justgithubaccount/app-poly-gitops-helm
+
+  secret:
+    createSecret: true
+
+server:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    tls: true
+
+# Self-managed ArgoCD Application
+extraObjects:
+  - apiVersion: argoproj.io/v1alpha1
+    kind: Application
+    metadata:
+      name: argocd
+      namespace: argocd
+      labels:
+        tier: platform
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      destination:
+        name: in-cluster
+        namespace: argocd
+      project: default
+      sources:
+        - chart: argo-cd
+          repoURL: https://argoproj.github.io/argo-helm
+          targetRevision: "7.7.10"
+          helm:
+            valueFiles:
+              - $values/bootstrap/argocd/values.yaml
+        - repoURL: https://github.com/justgithubaccount/app-poly-gitops-infra
+          targetRevision: main
+          ref: values
+      syncPolicy:
+        automated:
+          allowEmpty: true
+          selfHeal: true
+          prune: true
+        syncOptions:
+          - Validate=true
+          - CreateNamespace=true
+          - PruneLast=true
