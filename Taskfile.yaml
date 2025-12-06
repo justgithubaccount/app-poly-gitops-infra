@@ -46,11 +46,20 @@ tasks:
   # ArgoCD Bootstrap
   bootstrap:
     desc: "Bootstrap ArgoCD in cluster"
+    vars:
+      HELM_CMD: >-
+        helm template argocd argo/argo-cd
+        --namespace argocd
+        --version {{.ARGOCD_VERSION}}
+        --values bootstrap/argocd/values.yaml
     cmds:
-      - kubectl --kubeconfig={{.KUBECONFIG_PATH}} create namespace argocd --dry-run=client -o yaml | kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f -
+      - >-
+        kubectl --kubeconfig={{.KUBECONFIG_PATH}}
+        create namespace argocd --dry-run=client -o yaml |
+        kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f -
       - helm repo add argo https://argoproj.github.io/argo-helm
       - helm repo update
-      - helm template argocd argo/argo-cd --namespace argocd --version {{.ARGOCD_VERSION}} --values bootstrap/argocd/values.yaml | kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f - || helm template argocd argo/argo-cd --namespace argocd --version {{.ARGOCD_VERSION}} --values bootstrap/argocd/values.yaml | kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f -
+      - '{{.HELM_CMD}} | kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f -'
 
   argocd-password:
     desc: "Get ArgoCD admin password"
