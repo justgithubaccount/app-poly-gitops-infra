@@ -3,7 +3,7 @@ provider "twc" {
 }
 
 module "k8s" {
-  source = "git::https://github.com/justgithubaccount/infra-cluster.git//modules/timeweb-k8s?ref=feat/timeweb-k8s-module"
+  source = "git::https://github.com/justgithubaccount/infra-cluster.git//modules/timeweb-k8s?ref=main"
 
   cluster_name      = var.cluster_name
   project_id        = var.project_id
