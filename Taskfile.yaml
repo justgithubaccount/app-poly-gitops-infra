@@ -2,7 +2,7 @@
 version: '3'
 
 vars:
-  ARGOCD_VERSION: "7.7.10"
+  ARGOCD_VERSION: "9.1.6"
   TF_DIR: terraform/timeweb
   KUBECONFIG_PATH: "{{.HOME}}/.kube/timeweb-config"
 
@@ -59,7 +59,7 @@ tasks:
         kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f -
       - helm repo add argo https://argoproj.github.io/argo-helm
       - helm repo update
-      - '{{.HELM_CMD}} | kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f -'
+      - '{{.HELM_CMD}} | kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f - || {{.HELM_CMD}} | kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f -'
 
   argocd-password:
     desc: "Get ArgoCD admin password"

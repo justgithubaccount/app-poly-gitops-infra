@@ -39,3 +39,21 @@ variable "node_count" {
   type        = number
   default     = 3
 }
+
+variable "k8s_version" {
+  description = "Kubernetes version"
+  type        = string
+  default     = "v1.34.2+k0s.0"
+}
+
+variable "network_driver" {
+  description = "Network driver (calico, flannel, cilium)"
+  type        = string
+  default     = "calico"
+}
+
+variable "autoscaling" {
+  description = "Enable node autoscaling"
+  type        = bool
+  default     = false
+}
