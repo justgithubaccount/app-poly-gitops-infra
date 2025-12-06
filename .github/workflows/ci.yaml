@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Taskfile validation
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Validate Taskfile
+        run: task --list
+
+      # Terraform validation
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6"
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive terraform/
+
+      - name: Terraform Init (no backend)
+        run: terraform -chdir=terraform/timeweb init -backend=false
+
+      - name: Terraform Validate
+        run: terraform -chdir=terraform/timeweb validate
+
+      # YAML linting
+      - name: Lint YAML files
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          file_or_dir: .
+          config_data: |
+            extends: default
+            rules:
+              line-length:
+                max: 200
+              truthy:
+                check-keys: false
+              document-start: disable
+
+      # Shell scripts
+      - name: Check shell scripts
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: './scripts'
+          severity: warning
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Check for secrets in code
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Terraform security
+      - name: tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: terraform/timeweb
+          soft_fail: true
