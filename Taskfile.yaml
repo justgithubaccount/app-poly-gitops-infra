@@ -4,7 +4,7 @@ version: '3'
 vars:
   ARGOCD_VERSION: "7.7.10"
   TF_DIR: terraform/timeweb
-  KUBECONFIG_PATH: ~/.kube/timeweb-config
+  KUBECONFIG_PATH: "{{.HOME}}/.kube/timeweb-config"
 
 dotenv: ['.env']
 
@@ -22,8 +22,13 @@ tasks:
     desc: "Initialize terraform and create cluster"
     cmds:
       - terraform -chdir={{.TF_DIR}} init
-      - terraform -chdir={{.TF_DIR}} apply -auto-approve
+      - terraform -chdir={{.TF_DIR}} apply -auto-approve -refresh=true
       - task: kubeconfig
+
+  refresh:
+    desc: "Refresh Terraform outputs (after code changes)"
+    cmds:
+      - terraform -chdir={{.TF_DIR}} apply -refresh-only -auto-approve
 
   plan:
     desc: "Show terraform plan"
@@ -31,10 +36,10 @@ tasks:
       - terraform -chdir={{.TF_DIR}} plan
 
   kubeconfig:
-    desc: "Get kubeconfig from Timeweb"
+    desc: "Get kubeconfig from Terraform output"
     cmds:
-      - mkdir -p ~/.kube
-      - twc k8s kubeconfig get --cluster-id $(terraform -chdir={{.TF_DIR}} output -raw cluster_id) > {{.KUBECONFIG_PATH}}
+      - mkdir -p {{.HOME}}/.kube
+      - terraform -chdir={{.TF_DIR}} output -raw kubeconfig > {{.KUBECONFIG_PATH}}
       - chmod 600 {{.KUBECONFIG_PATH}}
       - echo "Kubeconfig saved to {{.KUBECONFIG_PATH}}"
 
@@ -42,31 +47,26 @@ tasks:
   bootstrap:
     desc: "Bootstrap ArgoCD in cluster"
     cmds:
-      - kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+      - kubectl --kubeconfig={{.KUBECONFIG_PATH}} create namespace argocd --dry-run=client -o yaml | kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f -
       - helm repo add argo https://argoproj.github.io/argo-helm
       - helm repo update
-      - |
-        helm upgrade --install argocd argo/argo-cd \
-          --namespace argocd \
-          --version {{.ARGOCD_VERSION}} \
-          --values bootstrap/argocd/values.yaml \
-          --wait --timeout 10m
+      - helm template argocd argo/argo-cd --namespace argocd --version {{.ARGOCD_VERSION}} --values bootstrap/argocd/values.yaml | kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f - || helm template argocd argo/argo-cd --namespace argocd --version {{.ARGOCD_VERSION}} --values bootstrap/argocd/values.yaml | kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f -
 
   argocd-password:
     desc: "Get ArgoCD admin password"
     cmds:
-      - kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
+      - kubectl --kubeconfig={{.KUBECONFIG_PATH}} -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
 
   argocd-port-forward:
     desc: "Port-forward ArgoCD UI to localhost:8080"
     cmds:
-      - kubectl port-forward svc/argocd-server -n argocd 8080:443
+      - kubectl --kubeconfig={{.KUBECONFIG_PATH}} port-forward svc/argocd-server -n argocd 8080:443
 
   # GitOps
   app-of-apps:
     desc: "Deploy root Application (app-of-apps)"
     cmds:
-      - kubectl apply -f https://raw.githubusercontent.com/justgithubaccount/app-poly-gitops-k8s/main/platform/core/cluster-bootstrap/app-of-apps.yaml
+      - kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f https://raw.githubusercontent.com/justgithubaccount/app-poly-gitops-k8s/main/platform/core/cluster-bootstrap/app-of-apps.yaml
 
   # Cleanup
   destroy:
@@ -83,3 +83,40 @@ tasks:
       - task: bootstrap
       - task: app-of-apps
       - task: argocd-password
+
+  # === Diagnostics ===
+  status:
+    desc: "Check ArgoCD status (usage: task status -- [app-name])"
+    cmds:
+      - ./scripts/argocd-status.sh {{.CLI_ARGS}}
+
+  sync-wait:
+    desc: "Wait for ArgoCD app sync (usage: task sync-wait -- app-name)"
+    cmds:
+      - ./scripts/argocd-sync-check.sh {{.CLI_ARGS}}
+
+  nodes:
+    desc: "Check cluster nodes"
+    cmds:
+      - ./scripts/check-nodes.sh
+
+  # === Secrets ===
+  seal:
+    desc: "Create SealedSecret (usage: task seal -- name namespace KEY=value)"
+    cmds:
+      - ./scripts/seal.sh {{.CLI_ARGS}}
+
+  seal:openrouter:
+    desc: "Create OpenRouter SealedSecret from .env"
+    cmds:
+      - ./scripts/seal.sh chat-openrouter chat-api OPENROUTER_API_KEY=$OPENROUTER_API_KEY
+
+  seal:github:
+    desc: "Create GitHub repo SealedSecret from .env"
+    cmds:
+      - ./scripts/seal.sh chat-github argocd --repo url=$GITHUB_REPO_URL username=$GITHUB_USERNAME password=$GITHUB_PAT
+
+  seal:postgree:
+    desc: "Create PostgreSQL SealedSecret from .env"
+    cmds:
+      - ./scripts/seal.sh chat-postgree chat-api DATABASE_URL=$DATABASE_URL
