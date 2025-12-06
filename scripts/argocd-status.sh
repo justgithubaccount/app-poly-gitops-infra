@@ -14,11 +14,11 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Icons
-CHECK="✓"
-CROSS="✗"
-WARN="⚠"
-SYNC="↻"
+# Icons (exported for potential subshells)
+export CHECK="✓"
+export CROSS="✗"
+export WARN="⚠"
+export SYNC="↻"
 
 echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
 echo -e "${BLUE}                    ArgoCD Status Check                         ${NC}"
