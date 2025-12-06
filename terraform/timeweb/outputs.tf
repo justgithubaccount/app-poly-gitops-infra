@@ -12,3 +12,9 @@ output "node_group_id" {
   description = "Node group ID"
   value       = twc_k8s_node_group.workers.id
 }
+
+output "kubeconfig" {
+  description = "Kubernetes cluster kubeconfig"
+  value       = twc_k8s_cluster.main.kubeconfig
+  sensitive   = true
+}

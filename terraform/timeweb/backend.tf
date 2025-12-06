@@ -1,12 +1,13 @@
 terraform {
   backend "s3" {
-    bucket   = "2038a447-9142-45c8-bcd6-47e98b04fbb2"
+    bucket   = "ceae9495-895a43c8-e4e3-424e-9599-6e5b95862164"
     key      = "terraform/infra.tfstate"
     region   = "ru-1"
-    endpoint = "s3.timeweb.cloud"
+    endpoint = "https://s3.twcstorage.ru"
 
     skip_credentials_validation = true
     skip_metadata_api_check     = true
     skip_region_validation      = true
+    skip_requesting_account_id  = true
   }
 }
