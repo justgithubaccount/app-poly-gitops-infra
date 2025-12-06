@@ -1,17 +1,9 @@
-terraform {
-  required_providers {
-    twc = {
-      source = "tf.timeweb.cloud/timeweb-cloud/timeweb-cloud"
-    }
-  }
-}
-
 provider "twc" {
   token = var.timeweb_token
 }
 
 module "k8s" {
-  source = "git::https://github.com/justgithubaccount/infra-cluster.git//modules/timeweb-k8s?ref=main"
+  source = "git::https://github.com/justgithubaccount/infra-cluster.git//modules/timeweb-k8s?ref=feat/timeweb-k8s-module"
 
   cluster_name      = var.cluster_name
   project_id        = var.project_id
