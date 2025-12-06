@@ -2,14 +2,22 @@
 version: '3'
 
 vars:
+  # Versions
   ARGOCD_VERSION: "7.7.10"
+
+  # Paths
   TF_DIR: terraform/timeweb
   KUBECONFIG_PATH: "{{.HOME}}/.kube/timeweb-config"
+
+  # ArgoCD
+  ARGOCD_SERVER: "localhost:8080"
+  ARGOCD_PORT: "8080"
 
 dotenv: ['.env']
 
 env:
   KUBECONFIG: "{{.KUBECONFIG_PATH}}"
+  ARGOCD_OPTS: "--grpc-web"
 
 tasks:
   default:
@@ -17,7 +25,10 @@ tasks:
     cmds:
       - task --list
 
-  # Infrastructure
+  # ═══════════════════════════════════════════════════════════════
+  # Infrastructure (Terraform)
+  # ═══════════════════════════════════════════════════════════════
+
   init:
     desc: "Initialize terraform and create cluster"
     cmds:
@@ -25,15 +36,15 @@ tasks:
       - terraform -chdir={{.TF_DIR}} apply -auto-approve -refresh=true
       - task: kubeconfig
 
-  refresh:
-    desc: "Refresh Terraform outputs (after code changes)"
-    cmds:
-      - terraform -chdir={{.TF_DIR}} apply -refresh-only -auto-approve
-
   plan:
     desc: "Show terraform plan"
     cmds:
       - terraform -chdir={{.TF_DIR}} plan
+
+  refresh:
+    desc: "Refresh Terraform outputs (after code changes)"
+    cmds:
+      - terraform -chdir={{.TF_DIR}} apply -refresh-only -auto-approve
 
   kubeconfig:
     desc: "Get kubeconfig from Terraform output"
@@ -43,39 +54,51 @@ tasks:
       - chmod 600 {{.KUBECONFIG_PATH}}
       - echo "Kubeconfig saved to {{.KUBECONFIG_PATH}}"
 
-  # ArgoCD Bootstrap
-  bootstrap:
-    desc: "Bootstrap ArgoCD in cluster"
-    cmds:
-      - kubectl --kubeconfig={{.KUBECONFIG_PATH}} create namespace argocd --dry-run=client -o yaml | kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f -
-      - helm repo add argo https://argoproj.github.io/argo-helm
-      - helm repo update
-      - helm template argocd argo/argo-cd --namespace argocd --version {{.ARGOCD_VERSION}} --values bootstrap/argocd/values.yaml | kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f - || helm template argocd argo/argo-cd --namespace argocd --version {{.ARGOCD_VERSION}} --values bootstrap/argocd/values.yaml | kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f -
-
-  argocd-password:
-    desc: "Get ArgoCD admin password"
-    cmds:
-      - kubectl --kubeconfig={{.KUBECONFIG_PATH}} -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
-
-  argocd-port-forward:
-    desc: "Port-forward ArgoCD UI to localhost:8080"
-    cmds:
-      - kubectl --kubeconfig={{.KUBECONFIG_PATH}} port-forward svc/argocd-server -n argocd 8080:443
-
-  # GitOps
-  app-of-apps:
-    desc: "Deploy root Application (app-of-apps)"
-    cmds:
-      - kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f https://raw.githubusercontent.com/justgithubaccount/app-poly-gitops-k8s/main/platform/core/cluster-bootstrap/app-of-apps.yaml
-
-  # Cleanup
   destroy:
     desc: "Destroy infrastructure (DANGER!)"
     prompt: "This will destroy all infrastructure. Are you sure?"
     cmds:
       - terraform -chdir={{.TF_DIR}} destroy -auto-approve
 
-  # Full workflow
+  # ═══════════════════════════════════════════════════════════════
+  # ArgoCD Bootstrap
+  # ═══════════════════════════════════════════════════════════════
+
+  bootstrap:
+    desc: "Bootstrap ArgoCD in cluster"
+    cmds:
+      - kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+      - helm repo add argo https://argoproj.github.io/argo-helm
+      - helm repo update
+      - |
+        helm template argocd argo/argo-cd \
+          --namespace argocd \
+          --version {{.ARGOCD_VERSION}} \
+          --values bootstrap/argocd/values.yaml | kubectl apply -f - || \
+        helm template argocd argo/argo-cd \
+          --namespace argocd \
+          --version {{.ARGOCD_VERSION}} \
+          --values bootstrap/argocd/values.yaml | kubectl apply -f -
+
+  app-of-apps:
+    desc: "Deploy root Application (app-of-apps)"
+    cmds:
+      - kubectl apply -f https://raw.githubusercontent.com/justgithubaccount/app-poly-gitops-k8s/main/platform/core/cluster-bootstrap/app-of-apps.yaml
+
+  argocd-password:
+    desc: "Get ArgoCD admin password"
+    cmds:
+      - kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
+
+  argocd-port-forward:
+    desc: "Port-forward ArgoCD UI to localhost:{{.ARGOCD_PORT}}"
+    cmds:
+      - kubectl port-forward svc/argocd-server -n argocd {{.ARGOCD_PORT}}:443
+
+  # ═══════════════════════════════════════════════════════════════
+  # Full Workflows
+  # ═══════════════════════════════════════════════════════════════
+
   up:
     desc: "Full setup: init + bootstrap + app-of-apps"
     cmds:
@@ -84,25 +107,128 @@ tasks:
       - task: app-of-apps
       - task: argocd-password
 
-  # === Diagnostics ===
+  down:
+    desc: "Alias for destroy"
+    cmds:
+      - task: destroy
+
+  # ═══════════════════════════════════════════════════════════════
+  # ArgoCD CLI (requires: argocd-port-forward in another terminal)
+  # ═══════════════════════════════════════════════════════════════
+
+  argocd:login:
+    desc: "Login to ArgoCD CLI"
+    cmds:
+      - |
+        PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+        argocd login {{.ARGOCD_SERVER}} --username admin --password "$PASSWORD" --insecure
+
+  argocd:list:
+    desc: "List all ArgoCD applications"
+    cmds:
+      - argocd app list
+
+  argocd:get:
+    desc: "Get detailed app info (task argocd:get -- app-name)"
+    cmds:
+      - argocd app get {{.CLI_ARGS}}
+
+  argocd:sync:
+    desc: "Sync application (task argocd:sync -- app-name)"
+    cmds:
+      - argocd app sync {{.CLI_ARGS}}
+
+  argocd:sync-all:
+    desc: "Sync all applications"
+    cmds:
+      - argocd app sync --all
+
+  argocd:refresh:
+    desc: "Refresh application (task argocd:refresh -- app-name)"
+    cmds:
+      - argocd app get {{.CLI_ARGS}} --refresh
+
+  argocd:diff:
+    desc: "Show diff for application (task argocd:diff -- app-name)"
+    cmds:
+      - argocd app diff {{.CLI_ARGS}}
+
+  argocd:history:
+    desc: "Show sync history (task argocd:history -- app-name)"
+    cmds:
+      - argocd app history {{.CLI_ARGS}}
+
+  argocd:logs:
+    desc: "Show app logs (task argocd:logs -- app-name)"
+    cmds:
+      - argocd app logs {{.CLI_ARGS}}
+
+  argocd:resources:
+    desc: "List app resources (task argocd:resources -- app-name)"
+    cmds:
+      - argocd app resources {{.CLI_ARGS}}
+
+  argocd:wait:
+    desc: "Wait for app sync (task argocd:wait -- app-name)"
+    cmds:
+      - argocd app wait {{.CLI_ARGS}} --health --sync
+
+  argocd:delete:
+    desc: "Delete application (task argocd:delete -- app-name)"
+    prompt: "Are you sure you want to delete this application?"
+    cmds:
+      - argocd app delete {{.CLI_ARGS}}
+
+  # ═══════════════════════════════════════════════════════════════
+  # Cluster Diagnostics
+  # ═══════════════════════════════════════════════════════════════
+
   status:
-    desc: "Check ArgoCD status (usage: task status -- [app-name])"
+    desc: "Check ArgoCD status"
     cmds:
       - ./scripts/argocd-status.sh {{.CLI_ARGS}}
 
   sync-wait:
-    desc: "Wait for ArgoCD app sync (usage: task sync-wait -- app-name)"
+    desc: "Wait for ArgoCD app sync (task sync-wait -- app-name [timeout])"
     cmds:
       - ./scripts/argocd-sync-check.sh {{.CLI_ARGS}}
 
   nodes:
     desc: "Check cluster nodes"
     cmds:
-      - ./scripts/check-nodes.sh
+      - kubectl get nodes -o wide
 
-  # === Secrets ===
+  pods:
+    desc: "List pods in namespace (task pods -- namespace)"
+    cmds:
+      - kubectl get pods -n {{.CLI_ARGS}} -o wide
+
+  pods:all:
+    desc: "List all pods in cluster"
+    cmds:
+      - kubectl get pods -A
+
+  events:
+    desc: "Show recent events (task events -- namespace)"
+    cmds:
+      - kubectl get events -n {{.CLI_ARGS}} --sort-by='.lastTimestamp' | tail -20
+
+  logs:
+    desc: "Get pod logs (task logs -- pod-name -n namespace)"
+    cmds:
+      - kubectl logs {{.CLI_ARGS}} --tail=100
+
+  describe:
+    desc: "Describe resource (task describe -- pod/name -n namespace)"
+    cmds:
+      - kubectl describe {{.CLI_ARGS}}
+
+  # ═══════════════════════════════════════════════════════════════
+  # SealedSecrets
+  # ═══════════════════════════════════════════════════════════════
+
   seal:
-    desc: "Create SealedSecret (usage: task seal -- name namespace KEY=value)"
+    desc: "Create SealedSecret (task seal -- name namespace KEY=value)"
     cmds:
       - ./scripts/seal.sh {{.CLI_ARGS}}
 
@@ -116,7 +242,12 @@ tasks:
     cmds:
       - ./scripts/seal.sh chat-github argocd --repo url=$GITHUB_REPO_URL username=$GITHUB_USERNAME password=$GITHUB_PAT
 
-  seal:postgree:
+  seal:postgres:
     desc: "Create PostgreSQL SealedSecret from .env"
     cmds:
-      - ./scripts/seal.sh chat-postgree chat-api DATABASE_URL=$DATABASE_URL
+      - ./scripts/seal.sh chat-postgres chat-api DATABASE_URL=$DATABASE_URL
+
+  seal:cloudflare:
+    desc: "Create Cloudflare SealedSecret from .env"
+    cmds:
+      - ./scripts/seal.sh cloudflare-token external-dns CLOUDFLARE_TOKEN=$CLOUDFLARE_TOKEN

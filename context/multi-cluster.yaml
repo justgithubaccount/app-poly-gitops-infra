@@ -1,0 +1,95 @@
+# ========================================
+# СЦЕНАРИЙ 1: Single Cluster (рекомендуется для начала)
+# ArgoCD деплоит в тот же кластер, где запущен
+# ========================================
+
+# infra/clusters/dev/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namePrefix: dev-
+
+resources:
+  - ../../../base/addons/ingress-nginx
+  - ../../../base/addons/cert-manager
+  - ../../../base/addons/external-dns
+  - ../../../base/addons/observability/loki
+  - ../../../base/addons/observability/grafana
+  - ../../../base/addons/longhorn
+  - ../../../base/services/agent/chat
+  - ../../../base/services/llm/gateway
+
+patches:
+  # ИСПРАВЛЕНИЕ: Только server, убираем name
+  - target:
+      kind: Application
+    patch: |-
+      - op: remove
+        path: /spec/destination/name
+      - op: replace
+        path: /spec/destination/server
+        value: https://kubernetes.default.svc
+
+---
+# infra/clusters/prd/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namePrefix: prd-
+
+resources:
+  - ../../../base/addons/ingress-nginx
+  - ../../../base/addons/cert-manager
+  - ../../../base/addons/external-dns
+  - ../../../base/addons/observability/loki
+  - ../../../base/addons/observability/grafana
+  - ../../../base/addons/longhorn
+  - ../../../base/services/agent/chat
+  - ../../../base/services/llm/gateway
+
+patches:
+  # ИСПРАВЛЕНИЕ: Только server, убираем name
+  - target:
+      kind: Application
+    patch: |-
+      - op: remove
+        path: /spec/destination/name
+      - op: replace
+        path: /spec/destination/server
+        value: https://kubernetes.default.svc
+
+# ========================================
+# СЦЕНАРИЙ 2: Multi-Cluster (продвинутый)
+# ArgoCD управляет внешними кластерами
+# ========================================
+
+# Сначала нужно зарегистрировать кластеры в ArgoCD:
+# argocd cluster add dev-context --name dev
+# argocd cluster add prd-context --name prd
+
+# Тогда можно использовать:
+# infra/clusters/dev/kustomization.yaml (для multi-cluster)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namePrefix: dev-
+
+resources:
+  - ../../../base/addons/ingress-nginx
+  - ../../../base/addons/cert-manager
+  - ../../../base/addons/external-dns
+  - ../../../base/addons/observability/loki
+  - ../../../base/addons/observability/grafana
+  - ../../../base/services/agent/chat
+  - ../../../base/services/llm/gateway
+
+patches:
+  # Для внешнего кластера - только name
+  - target:
+      kind: Application
+    patch: |-
+      - op: replace
+        path: /spec/destination/name
+        value: dev
+      - op: remove
+        path: /spec/destination/server
