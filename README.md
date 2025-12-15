@@ -48,18 +48,28 @@ task up
 
 ```mermaid
 flowchart TB
-    subgraph CLOUD["☁️ Timeweb Cloud"]
-        subgraph CLUSTER["🎯 Kubernetes Cluster"]
-            subgraph ARGOCD["🔄 ArgoCD"]
+    subgraph CLOUD["Timeweb Cloud"]
+        subgraph CLUSTER["Kubernetes Cluster"]
+            subgraph ARGOCD["ArgoCD"]
                 root[app-of-apps]
                 root --> platform
                 root --> tenants
-                root --> policies
+            end
+            subgraph PLATFORM["Platform"]
+                nginx[ingress-nginx]
+                cert[cert-manager]
+                dns[external-dns]
+                sealed[sealed-secrets]
+                longhorn[longhorn]
+                cnpg[cloudnative-pg]
+                loki[loki]
+                grafana[grafana]
+                otel[otel-collector]
             end
         end
     end
 
-    subgraph REPOS["📦 Git Repositories"]
+    subgraph REPOS["Git Repositories"]
         k8s[app-poly-gitops-k8s]
         helm[app-poly-gitops-helm]
         infra[app-poly-gitops-infra]
@@ -69,8 +79,6 @@ flowchart TB
     helm --> |"Helm charts"| ARGOCD
     infra --> |"Bootstrap"| CLUSTER
 ```
-
-> See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed diagrams
 
 ## Related Repositories
 
@@ -103,6 +111,20 @@ ArgoCD configuration is in `bootstrap/argocd/values.yaml`. After initial bootstr
 2. **Bootstrap**: `task bootstrap` installs ArgoCD with initial values
 3. **GitOps**: `task app-of-apps` deploys root Application from app-poly-gitops-k8s
 4. **Self-managed**: ArgoCD now manages itself and all applications
+
+## Golden Install Notes
+
+При чистой установке с нуля:
+
+1. **ArgoCD Ingress** управляется через GitOps в `app-poly-gitops-k8s`, не через Helm chart
+2. **ArgoCD insecure mode** — сервер работает в HTTP режиме, ingress без `backend-protocol: HTTPS`
+3. **Cloudflare token** — ключ в секрете: `CF_API_TOKEN`
+4. **Sync Waves** — операторы (wave: 1) деплоятся раньше их CR (wave: 3+)
+
+## Access
+
+- **ArgoCD UI**: https://argo.syncjob.ru
+- **Admin password**: `task argocd-password`
 
 ## Cleanup
 
