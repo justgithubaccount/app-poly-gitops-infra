@@ -13,7 +13,7 @@ variable "project_id" {
 variable "network_id" {
   description = "Timeweb network ID"
   type        = string
-  default     = "network-559c3f2944a145deb01b610c27f1fa9a"
+  default     = "network-114cf1a7c6e9419bb665f0458621c83d"
 }
 
 variable "cluster_name" {
@@ -25,13 +25,13 @@ variable "cluster_name" {
 variable "cluster_preset_id" {
   description = "Cluster preset ID (determines cluster resources)"
   type        = number
-  default     = 1675
+  default     = 403
 }
 
 variable "node_preset_id" {
   description = "Node preset ID (determines node resources)"
   type        = number
-  default     = 1683
+  default     = 445
 }
 
 variable "node_count" {

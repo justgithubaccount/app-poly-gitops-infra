@@ -70,12 +70,12 @@ if ! command -v kubeseal &>/dev/null; then
 fi
 
 # Verify controller is running
-echo -e "${YELLOW}Checking SealedSecrets controller...${NC}"
+echo -e "${YELLOW}Checking SealedSecrets controller...${NC}" >&2
 if ! kubectl get pods -n "$CONTROLLER_NAMESPACE" -l app.kubernetes.io/name=sealed-secrets --no-headers 2>/dev/null | grep -q Running; then
-    echo -e "${RED}✗ SealedSecrets controller not running in ${CONTROLLER_NAMESPACE}${NC}"
+    echo -e "${RED}✗ SealedSecrets controller not running in ${CONTROLLER_NAMESPACE}${NC}" >&2
     exit 1
 fi
-echo -e "${GREEN}✓${NC} Controller found in ${CONTROLLER_NAMESPACE}"
+echo -e "${GREEN}✓${NC} Controller found in ${CONTROLLER_NAMESPACE}" >&2
 
 # Build kubectl create secret command
 KUBECTL_ARGS=()
@@ -83,24 +83,24 @@ for arg in "$@"; do
     if [[ "$arg" == *"="* ]]; then
         KUBECTL_ARGS+=("--from-literal=$arg")
     else
-        echo -e "${RED}✗ Invalid argument: $arg (expected KEY=VALUE)${NC}"
+        echo -e "${RED}✗ Invalid argument: $arg (expected KEY=VALUE)${NC}" >&2
         exit 1
     fi
 done
 
 if [ ${#KUBECTL_ARGS[@]} -eq 0 ]; then
-    echo -e "${RED}✗ No key=value pairs provided${NC}"
+    echo -e "${RED}✗ No key=value pairs provided${NC}" >&2
     usage
 fi
 
-echo -e "${YELLOW}Creating SealedSecret...${NC}"
-echo -e "  ${BLUE}Name:${NC}      $SECRET_NAME"
-echo -e "  ${BLUE}Namespace:${NC} $NAMESPACE"
-echo -e "  ${BLUE}Keys:${NC}      ${#KUBECTL_ARGS[@]}"
+echo -e "${YELLOW}Creating SealedSecret...${NC}" >&2
+echo -e "  ${BLUE}Name:${NC}      $SECRET_NAME" >&2
+echo -e "  ${BLUE}Namespace:${NC} $NAMESPACE" >&2
+echo -e "  ${BLUE}Keys:${NC}      ${#KUBECTL_ARGS[@]}" >&2
 if [ "$IS_REPO_SECRET" == "true" ]; then
-    echo -e "  ${BLUE}Type:${NC}      ArgoCD Repository Secret"
+    echo -e "  ${BLUE}Type:${NC}      ArgoCD Repository Secret" >&2
 fi
-echo ""
+echo "" >&2
 
 # Create the secret
 if [ "$IS_REPO_SECRET" == "true" ]; then
@@ -126,8 +126,5 @@ else
         --format yaml
 fi
 
-echo ""
-echo -e "${GREEN}✓ SealedSecret created successfully${NC}"
-echo ""
-echo -e "${YELLOW}To save to file:${NC}"
-echo "  $0 $SECRET_NAME $NAMESPACE ${*} > ${SECRET_NAME}-secrets.yaml"
+echo "" >&2
+echo -e "${GREEN}✓ SealedSecret created successfully${NC}" >&2

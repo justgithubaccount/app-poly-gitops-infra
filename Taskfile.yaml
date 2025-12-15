@@ -129,3 +129,31 @@ tasks:
     desc: "Create PostgreSQL SealedSecret from .env"
     cmds:
       - ./scripts/seal.sh chat-postgree chat-api DATABASE_URL=$DATABASE_URL
+
+  # === Timeweb CLI ===
+  twc:versions:
+    desc: "List available K8s versions"
+    cmds:
+      - twc k8s list-k8s-versions
+
+  twc:presets:
+    desc: "List K8s presets (master/worker)"
+    cmds:
+      - twc k8s list-presets
+
+  twc:list:
+    desc: "List K8s clusters"
+    cmds:
+      - twc k8s list
+
+  twc:kubeconfig:
+    desc: "Download kubeconfig for cluster (usage: task twc:kubeconfig -- CLUSTER_ID)"
+    cmds:
+      - twc k8s kubeconfig {{.CLI_ARGS}} -o {{.KUBECONFIG_PATH}}
+      - chmod 600 {{.KUBECONFIG_PATH}}
+      - echo "Kubeconfig saved to {{.KUBECONFIG_PATH}}"
+
+  twc:show:
+    desc: "Show cluster info (usage: task twc:show -- CLUSTER_ID)"
+    cmds:
+      - twc k8s show {{.CLI_ARGS}}
