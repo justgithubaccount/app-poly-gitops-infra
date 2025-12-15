@@ -22,11 +22,7 @@ configs:
 
 server:
   ingress:
-    enabled: true
-    ingressClassName: nginx
-    annotations:
-      cert-manager.io/cluster-issuer: letsencrypt-dns
-    tls: true
+    enabled: false  # Managed via GitOps in app-poly-gitops-k8s (ingress-argo.yaml)
 
 # Self-managed ArgoCD Application
 extraObjects:
