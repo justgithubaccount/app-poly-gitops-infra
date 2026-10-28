@@ -22,7 +22,7 @@ grep -q 'kubectl -n argocd patch application gitops-smoke-root' "${workflow}"
 grep -q "operation:{sync:" "${workflow}"
 grep -q 'prune:true' "${workflow}"
 grep -q 'wait-for-argocd-application.sh vector-gateway' "${workflow}"
-grep -q 'wait-for-argocd-application.sh loki' "${workflow}"
+grep -q 'wait-for-argocd-application.sh loki 300' "${workflow}"
 grep -q 'wait-for-argocd-application.sh grafana' "${workflow}"
 grep -q 'wait-for-argocd-application.sh chat-api' "${workflow}"
 grep -q 'wait-for-argocd-application.sh crewai' "${workflow}"
@@ -41,6 +41,8 @@ if grep -q 'service/jaeger' "${workflow}"; then
   exit 1
 fi
 grep -q 'scripts/verify-loki-log.sh' "${workflow}"
+grep -q 'containerStatuses' "${workflow}"
+grep -q 'logs pod/loki-0 -c loki --previous' "${workflow}"
 
 grep -q 'actions/upload-artifact@v4' "${workflow}"
 grep -q 'timeweb-debug-state-${{ github.run_id }}' "${workflow}"

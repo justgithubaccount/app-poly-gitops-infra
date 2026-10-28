@@ -164,11 +164,11 @@ jobs:
             --type merge \
             --patch "${sync_patch}"
           bash scripts/wait-for-argocd-application.sh gitops-smoke-root 1200 sync-only
-          bash scripts/wait-for-argocd-application.sh loki 1200
-          bash scripts/wait-for-argocd-application.sh grafana 1200
-          bash scripts/wait-for-argocd-application.sh vector-gateway 1200
-          bash scripts/wait-for-argocd-application.sh chat-api 1200
-          bash scripts/wait-for-argocd-application.sh crewai 1200
+          bash scripts/wait-for-argocd-application.sh loki 300
+          bash scripts/wait-for-argocd-application.sh grafana 600
+          bash scripts/wait-for-argocd-application.sh vector-gateway 600
+          bash scripts/wait-for-argocd-application.sh chat-api 600
+          bash scripts/wait-for-argocd-application.sh crewai 600
           kubectl -n argocd get applications -o wide
 
       - name: Verify application images
@@ -288,7 +288,10 @@ jobs:
           kubectl -n argocd get application gitops-smoke-root -o yaml || true
           kubectl -n observability get all || true
           kubectl -n observability logs deployment/vector-gateway --tail=200 || true
-          kubectl -n observability logs statefulset/loki --tail=200 || true
+          kubectl -n observability get pod loki-0 -o json | \
+            jq '.status.containerStatuses' || true
+          kubectl -n observability logs pod/loki-0 -c loki --tail=200 || true
+          kubectl -n observability logs pod/loki-0 -c loki --previous --tail=200 || true
           kubectl -n chat-api logs deployment/chat-api --tail=200 || true
           kubectl -n crewai-system logs deployment/crewai --tail=200 || true
 
