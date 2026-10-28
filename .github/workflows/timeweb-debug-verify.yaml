@@ -72,17 +72,38 @@ jobs:
             argocd.argoproj.io/refresh=hard \
             --overwrite
           bash scripts/wait-for-argocd-application.sh gitops-smoke-root 600 sync-only
+          child_revision=""
+          for _ in $(seq 1 120); do
+            child_revision="$(kubectl -n argocd get application crewai \
+              -o jsonpath='{.spec.source.targetRevision}' 2>/dev/null || true)"
+            if test "${child_revision}" = "${GITOPS_REVISION}"; then
+              break
+            fi
+            sleep 5
+          done
+          test "${child_revision}" = "${GITOPS_REVISION}"
+          kubectl -n argocd annotate application crewai \
+            argocd.argoproj.io/refresh=hard \
+            --overwrite
           bash scripts/wait-for-argocd-application.sh chat-api 900
           bash scripts/wait-for-argocd-application.sh crewai 900
           kubectl -n argocd get applications gitops-smoke-root chat-api crewai
 
       - name: Verify CrewAI rollout and image
         run: |
+          expected_image="ghcr.io/justgithubaccount/app-poly-gitops-crewai:${EXPECTED_CREWAI_TAG}"
+          image=""
+          for _ in $(seq 1 120); do
+            image="$(kubectl -n crewai-system get deployment crewai \
+              -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)"
+            if test "${image}" = "${expected_image}"; then
+              break
+            fi
+            sleep 5
+          done
+          test "${image}" = "${expected_image}"
           kubectl -n crewai-system rollout status deployment/crewai --timeout=10m
-          image="$(kubectl -n crewai-system get deployment crewai \
-            -o jsonpath='{.spec.template.spec.containers[0].image}')"
           echo "CrewAI image: ${image}"
-          test "${image}" = "ghcr.io/justgithubaccount/app-poly-gitops-crewai:${EXPECTED_CREWAI_TAG}"
           kubectl -n crewai-system exec deployment/crewai -- /bin/sh -c \
             'KUBECONFIG=/tmp/auto-k8s-pilot-kubeconfig kubectl get pods --all-namespaces --request-timeout=20s'
 
