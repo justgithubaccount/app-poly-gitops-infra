@@ -31,7 +31,7 @@ resource "terraform_data" "cost_guard" {
 }
 
 module "k8s" {
-  source = "git::https://github.com/justgithubaccount/infra-cluster.git//modules/timeweb-k8s?ref=3ed281361a2f03fd3dccc5776369ad5445b1acb9"
+  source = "git::https://github.com/justgithubaccount/infra-cluster.git//modules/timeweb-k8s?ref=v0.1.0"
 
   cluster_name      = var.cluster_name
   project_id        = var.project_id

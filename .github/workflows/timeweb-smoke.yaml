@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: justgithubaccount/app-poly-gitops-helm
-          ref: c3f071092d36b3cf02728aa7e06785a343e68f3c
+          ref: v0.4.0
           path: app-chart
 
       - name: Require Timeweb token
