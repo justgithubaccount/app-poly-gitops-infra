@@ -14,8 +14,8 @@ Infrastructure provisioning and ArgoCD bootstrap for GitOps platform.
 For the disposable GitHub Actions smoke run, add one repository secret named
 `TF_VAR_TIMEWEB_TOKEN`. The workflow provisions one small worker, bootstraps
 Argo CD, reconciles the versioned GitOps root from `app-poly-gitops-k8s`, checks
-the Argo CD sync/health state and application `/health`, then destroys the
-cluster in the same job.
+both `chat-api` and CrewAI through Argo CD, probes CrewAI discovery endpoints
+and its read-only Kubernetes access, then destroys the cluster in the same job.
 
 ## Quick Start
 

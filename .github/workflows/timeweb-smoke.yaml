@@ -79,7 +79,8 @@ jobs:
           kubectl apply -f bootstrap/argocd/gitops-smoke-root.yaml
           bash scripts/wait-for-argocd-application.sh gitops-smoke-root 600 sync-only
           bash scripts/wait-for-argocd-application.sh chat-api 900
-          kubectl -n argocd get applications gitops-smoke-root chat-api
+          bash scripts/wait-for-argocd-application.sh crewai 900
+          kubectl -n argocd get applications gitops-smoke-root chat-api crewai
 
       - name: Smoke health endpoint
         if: steps.apply.outcome == 'success'
@@ -91,6 +92,26 @@ jobs:
           timeout 6m kubectl -n chat-api wait --for=condition=complete job/healthcheck --timeout=5m
           kubectl -n chat-api logs job/healthcheck
 
+      - name: Smoke CrewAI runtime and read-only cluster access
+        if: steps.apply.outcome == 'success'
+        run: |
+          kubectl -n crewai-system create job crewai-healthcheck \
+            --image=curlimages/curl:8.12.1 \
+            -- /bin/sh -c '
+              set -eu
+              curl --silent --show-error --fail --retry 30 --retry-delay 2 --retry-connrefused http://crewai/health | tee /tmp/health
+              grep -q "\"status\":\"ok\"" /tmp/health
+              curl --silent --show-error --fail http://crewai/flows | tee /tmp/flows
+              grep -q "k8s-healthcheck" /tmp/flows
+              curl --silent --show-error --fail http://crewai/agents | tee /tmp/agents
+              grep -q "k8s_operator" /tmp/agents
+            '
+          timeout 6m kubectl -n crewai-system wait \
+            --for=condition=complete job/crewai-healthcheck --timeout=5m
+          kubectl -n crewai-system logs job/crewai-healthcheck
+          kubectl -n crewai-system exec deployment/crewai -- \
+            kubectl get pods --all-namespaces --request-timeout=20s
+
       - name: Kubernetes diagnostics
         if: failure() && steps.apply.outcome == 'success'
         run: |
@@ -99,9 +120,12 @@ jobs:
           kubectl -n argocd get applications -o wide || true
           kubectl -n argocd get application gitops-smoke-root -o yaml || true
           kubectl -n argocd get application chat-api -o yaml || true
+          kubectl -n argocd get application crewai -o yaml || true
           kubectl -n argocd logs statefulset/argocd-application-controller --tail=200 || true
           kubectl -n chat-api describe deployment/chat-api || true
           kubectl -n chat-api logs deployment/chat-api --tail=200 || true
+          kubectl -n crewai-system describe deployment/crewai || true
+          kubectl -n crewai-system logs deployment/crewai --tail=200 || true
 
       - name: Terraform destroy
         if: always() && steps.init.outcome == 'success'

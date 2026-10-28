@@ -12,8 +12,8 @@ spec:
     namespace: argocd
   source:
     repoURL: https://github.com/justgithubaccount/app-poly-gitops-k8s.git
-    targetRevision: v1.0.0
-    path: tenants/product-team/apps/chat/base
+    targetRevision: v1.1.0
+    path: clusters/smoke
   syncPolicy:
     automated:
       prune: true
