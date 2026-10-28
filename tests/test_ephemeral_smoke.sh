@@ -73,6 +73,8 @@ grep -q 'terraform.tfstate' "${cleanup_workflow}"
 grep -q 'secrets.TIMEWEB_DEBUG_STATE_KEY' "${cleanup_workflow}"
 grep -q 'openssl enc -d -aes-256-cbc' "${cleanup_workflow}"
 grep -q 'debug.auto.tfvars.json' "${cleanup_workflow}"
+grep -Fq 'if test -f "${RUNNER_TEMP}/restored-debug-state/debug.auto.tfvars.json"; then' \
+  "${cleanup_workflow}"
 
 test -f "${verify_workflow}"
 grep -q 'provision_run_id:' "${verify_workflow}"
