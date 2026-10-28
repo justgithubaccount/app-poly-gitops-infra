@@ -1,7 +1,13 @@
-name: Timeweb disposable smoke
+name: Timeweb smoke and debug
 
 on:
   workflow_dispatch:
+    inputs:
+      keep_cluster:
+        description: Keep the cluster and upload temporary state for debugging
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -129,24 +135,43 @@ jobs:
       - name: Execute CrewAI Kubernetes health flow
         if: steps.apply.outcome == 'success'
         run: |
-          kubectl -n crewai-system create job crewai-flowcheck \
+          kubectl -n crewai-system delete pod crewai-flowcheck --ignore-not-found
+          kubectl -n crewai-system run crewai-flowcheck \
+            --restart=Never \
             --image=curlimages/curl:8.12.1 \
             -- /bin/sh -c '
               set -eu
-              curl --silent --show-error --fail-with-body \
+              curl_exit=0
+              http_code="$(curl --silent --show-error \
+                --output /tmp/result.json \
+                --write-out "%{http_code}" \
                 --max-time 900 \
                 -X POST \
                 -H "Content-Type: application/json" \
                 -d "{\"namespace\":\"crewai-system\"}" \
-                http://crewai/run/k8s-healthcheck > /tmp/result.json
+                http://crewai/run/k8s-healthcheck)" || curl_exit=$?
               cat /tmp/result.json
+              test "${curl_exit}" -eq 0
+              test "${http_code}" = "200"
               grep -q "\"task\":\"k8s_pods_overview\"" /tmp/result.json
               grep -q "\"task\":\"cluster_summary\"" /tmp/result.json
               ! grep -q "\"output\":\"ERROR" /tmp/result.json
             '
-          timeout 16m kubectl -n crewai-system wait \
-            --for=condition=complete job/crewai-flowcheck --timeout=15m
-          kubectl -n crewai-system logs job/crewai-flowcheck
+          phase=""
+          for _ in $(seq 1 190); do
+            phase="$(kubectl -n crewai-system get pod crewai-flowcheck \
+              -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+            case "${phase}" in
+              Succeeded) break ;;
+              Failed)
+                kubectl -n crewai-system logs pod/crewai-flowcheck || true
+                exit 1
+                ;;
+            esac
+            sleep 5
+          done
+          kubectl -n crewai-system logs pod/crewai-flowcheck || true
+          test "${phase}" = "Succeeded"
 
       - name: Kubernetes diagnostics
         if: failure() && steps.apply.outcome == 'success'
@@ -161,13 +186,50 @@ jobs:
           kubectl -n chat-api describe deployment/chat-api || true
           kubectl -n chat-api logs deployment/chat-api --tail=200 || true
           kubectl -n crewai-system describe deployment/crewai || true
-          kubectl -n crewai-system logs deployment/crewai --tail=200 || true
-          kubectl -n crewai-system logs job/crewai-flowcheck || true
+          kubectl -n crewai-system logs deployment/crewai --since=30m --tail=-1 || true
+          kubectl -n crewai-system logs pod/crewai-flowcheck || true
+
+      - name: Stage retained debug state
+        if: always() && steps.apply.outcome == 'success' && inputs.keep_cluster == true
+        env:
+          STATE_KEY: ${{ secrets.TIMEWEB_DEBUG_STATE_KEY }}
+        run: |
+          test -n "${STATE_KEY}"
+          debug_state_dir="${RUNNER_TEMP}/timeweb-debug-state"
+          mkdir -p "${debug_state_dir}"
+          install -m 600 "${TF_DIR}/terraform.tfstate" "${debug_state_dir}/terraform.tfstate"
+          install -m 600 "${KUBECONFIG}" "${debug_state_dir}/kubeconfig"
+          tar -C "${debug_state_dir}" -czf "${RUNNER_TEMP}/timeweb-debug-state.tar.gz" .
+          openssl enc -aes-256-cbc -salt -pbkdf2 \
+            -in "${RUNNER_TEMP}/timeweb-debug-state.tar.gz" \
+            -out "${RUNNER_TEMP}/timeweb-debug-state.enc" \
+            -pass env:STATE_KEY
+
+      - name: Upload retained debug state
+        if: always() && steps.apply.outcome == 'success' && inputs.keep_cluster == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: timeweb-debug-state-${{ github.run_id }}
+          path: ${{ runner.temp }}/timeweb-debug-state.enc
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Report retained cluster
+        if: always() && steps.apply.outcome == 'success' && inputs.keep_cluster == true
+        run: |
+          {
+            echo "## Retained Timeweb debug cluster"
+            echo
+            echo "- Cluster: $(terraform -chdir="${TF_DIR}" output -raw cluster_name)"
+            echo "- Cluster ID: $(terraform -chdir="${TF_DIR}" output -raw cluster_id)"
+            echo "- Encrypted state artifact: timeweb-debug-state-${GITHUB_RUN_ID} (retained for one day)"
+            echo "- Cleanup: run the Timeweb cleanup workflow with provision_run_id=${GITHUB_RUN_ID}"
+          } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Terraform destroy
-        if: always() && steps.init.outcome == 'success'
+        if: always() && steps.init.outcome == 'success' && inputs.keep_cluster != true
         run: timeout 35m terraform -chdir="${TF_DIR}" destroy -auto-approve
 
       - name: Verify empty Terraform state
-        if: always() && steps.init.outcome == 'success'
+        if: always() && steps.init.outcome == 'success' && inputs.keep_cluster != true
         run: test -z "$(terraform -chdir="${TF_DIR}" state list)"

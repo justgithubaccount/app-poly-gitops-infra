@@ -1,0 +1,72 @@
+name: Timeweb cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      provision_run_id:
+        description: Run ID of the retained Timeweb smoke/debug workflow
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: timeweb-debug-${{ inputs.provision_run_id }}
+  cancel-in-progress: false
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_VAR_timeweb_token: ${{ secrets.TF_VAR_TIMEWEB_TOKEN }}
+      STATE_KEY: ${{ secrets.TIMEWEB_DEBUG_STATE_KEY }}
+      TF_DIR: terraform/timeweb
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Require Timeweb token
+        run: |
+          test -n "${TF_VAR_timeweb_token}"
+          test -n "${STATE_KEY}"
+
+      - name: Download retained Terraform state
+        uses: actions/download-artifact@v4
+        with:
+          name: timeweb-debug-state-${{ inputs.provision_run_id }}
+          path: ${{ runner.temp }}/timeweb-debug-state
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.provision_run_id }}
+
+      - name: Restore Terraform state
+        run: |
+          openssl enc -d -aes-256-cbc -pbkdf2 \
+            -in "${RUNNER_TEMP}/timeweb-debug-state/timeweb-debug-state.enc" \
+            -out "${RUNNER_TEMP}/timeweb-debug-state.tar.gz" \
+            -pass env:STATE_KEY
+          mkdir -p "${RUNNER_TEMP}/restored-debug-state"
+          tar -C "${RUNNER_TEMP}/restored-debug-state" \
+            -xzf "${RUNNER_TEMP}/timeweb-debug-state.tar.gz"
+          install -m 600 "${RUNNER_TEMP}/restored-debug-state/terraform.tfstate" \
+            "${TF_DIR}/terraform.tfstate"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.13.5"
+
+      - name: Terraform init
+        run: terraform -chdir="${TF_DIR}" init
+
+      - name: Terraform destroy
+        run: timeout 35m terraform -chdir="${TF_DIR}" destroy -auto-approve
+
+      - name: Verify empty Terraform state
+        run: test -z "$(terraform -chdir="${TF_DIR}" state list)"
