@@ -8,6 +8,14 @@ on:
         required: true
         type: boolean
         default: false
+      location:
+        description: Timeweb location for the Kubernetes cluster
+        required: true
+        type: choice
+        options:
+          - ru-1
+          - nl-1
+        default: ru-1
 
 permissions:
   contents: read
@@ -25,6 +33,7 @@ jobs:
       TF_INPUT: "false"
       TF_VAR_timeweb_token: ${{ secrets.TF_VAR_TIMEWEB_TOKEN }}
       TF_VAR_cluster_name: gitops-smoke-${{ github.run_id }}
+      TF_VAR_location: ${{ inputs.location }}
       TF_VAR_max_runtime_minutes: "120"
       TF_VAR_max_cost_rub: "80"
       TF_DIR: terraform/timeweb
@@ -199,6 +208,8 @@ jobs:
           mkdir -p "${debug_state_dir}"
           install -m 600 "${TF_DIR}/terraform.tfstate" "${debug_state_dir}/terraform.tfstate"
           install -m 600 "${KUBECONFIG}" "${debug_state_dir}/kubeconfig"
+          printf '{"location":"%s"}\n' "${TF_VAR_location}" \
+            > "${debug_state_dir}/debug.auto.tfvars.json"
           tar -C "${debug_state_dir}" -czf "${RUNNER_TEMP}/timeweb-debug-state.tar.gz" .
           openssl enc -aes-256-cbc -salt -pbkdf2 \
             -in "${RUNNER_TEMP}/timeweb-debug-state.tar.gz" \

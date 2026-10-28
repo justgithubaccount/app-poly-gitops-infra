@@ -22,6 +22,10 @@ state/kubeconfig artifact encrypted with the `TIMEWEB_DEBUG_STATE_KEY` repositor
 secret for one day. Delete that cluster by running the `Timeweb cleanup` workflow
 with the provisioning run ID.
 
+The smoke workflow accepts `location=ru-1` or `location=nl-1`. Use `nl-1` when
+the application must call an API that does not serve requests from Russia; the
+same preset lookup and cost guard are applied before Terraform creates anything.
+
 ## Quick Start
 
 ```bash
