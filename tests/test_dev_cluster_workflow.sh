@@ -26,6 +26,10 @@ grep -q 'wait-for-argocd-application.sh loki' "${workflow}"
 grep -q 'wait-for-argocd-application.sh grafana' "${workflow}"
 grep -q 'wait-for-argocd-application.sh chat-api' "${workflow}"
 grep -q 'wait-for-argocd-application.sh crewai' "${workflow}"
+if grep -Eq 'wait-for-argocd-application.sh (longhorn|cloudnative-pg)' "${workflow}"; then
+  echo 'dev workflow waits for components outside the application runtime profile' >&2
+  exit 1
+fi
 
 grep -q 'chat-openrouter' "${workflow}"
 grep -q 'crewai-llm' "${workflow}"

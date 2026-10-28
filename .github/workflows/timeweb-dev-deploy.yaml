@@ -164,8 +164,6 @@ jobs:
             --type merge \
             --patch "${sync_patch}"
           bash scripts/wait-for-argocd-application.sh gitops-smoke-root 1200 sync-only
-          bash scripts/wait-for-argocd-application.sh longhorn 1200
-          bash scripts/wait-for-argocd-application.sh cloudnative-pg 1200
           bash scripts/wait-for-argocd-application.sh loki 1200
           bash scripts/wait-for-argocd-application.sh grafana 1200
           bash scripts/wait-for-argocd-application.sh vector-gateway 1200
@@ -288,7 +286,6 @@ jobs:
           kubectl get pvc --all-namespaces || true
           kubectl -n argocd get applications -o wide || true
           kubectl -n argocd get application gitops-smoke-root -o yaml || true
-          kubectl -n argocd get application longhorn -o yaml || true
           kubectl -n observability get all || true
           kubectl -n observability logs deployment/vector-gateway --tail=200 || true
           kubectl -n observability logs statefulset/loki --tail=200 || true
