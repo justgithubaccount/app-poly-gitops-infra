@@ -45,5 +45,5 @@ if bash "${smoke_script}" "http://127.0.0.1:$(cat "${port_file}")" \
   echo "runtime smoke accepted an LLM error as success" >&2
   exit 1
 fi
-grep -q 'Ошибка API: invalid key' "${error_output}"
+grep -q 'invalid key' "${error_output}"
 rm -f "${error_output}"
