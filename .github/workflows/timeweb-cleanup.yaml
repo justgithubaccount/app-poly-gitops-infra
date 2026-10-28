@@ -56,6 +56,8 @@ jobs:
             -xzf "${RUNNER_TEMP}/timeweb-debug-state.tar.gz"
           install -m 600 "${RUNNER_TEMP}/restored-debug-state/terraform.tfstate" \
             "${TF_DIR}/terraform.tfstate"
+          install -m 600 "${RUNNER_TEMP}/restored-debug-state/debug.auto.tfvars.json" \
+            "${TF_DIR}/debug.auto.tfvars.json"
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
