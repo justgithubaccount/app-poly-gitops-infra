@@ -48,6 +48,8 @@ jobs:
             --header "Authorization: Bearer ${TIMEWEB_CLOUD_TOKEN}" \
             https://api.timeweb.cloud/api/v1/floating-ips > "${RUNNER_TEMP}/floating-ips.json"
 
+          echo "Account public IP count: $(jq '.ips | length' "${RUNNER_TEMP}/floating-ips.json")"
+
           jq --argjson comments "${comments_json}" --argjson ips "${ips_json}" \
             '[.ips[] | . as $item |
               select(
