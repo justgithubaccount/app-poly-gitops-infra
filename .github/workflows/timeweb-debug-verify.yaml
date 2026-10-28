@@ -120,6 +120,11 @@ jobs:
             exit_code=$?
             trap - EXIT
             if test "${exit_code}" -ne 0; then
+              kubectl -n chat-api get job fastapi-runtime-smoke -o wide || true
+              kubectl -n chat-api get pods -l job-name=fastapi-runtime-smoke -o wide || true
+              kubectl -n chat-api describe job fastapi-runtime-smoke || true
+              kubectl -n chat-api describe pods -l job-name=fastapi-runtime-smoke || true
+              kubectl -n chat-api logs job/fastapi-runtime-smoke || true
               kubectl -n chat-api logs deployment/chat-api --since=10m --tail=-1 || true
             fi
             kubectl -n chat-api delete job fastapi-runtime-smoke --ignore-not-found --wait=true || true
@@ -171,9 +176,24 @@ jobs:
                     configMap:
                       name: fastapi-runtime-smoke
           YAML
-          timeout 11m kubectl -n chat-api wait \
-            --for=condition=complete job/fastapi-runtime-smoke --timeout=10m
+          job_phase=""
+          for _ in $(seq 1 120); do
+            succeeded="$(kubectl -n chat-api get job fastapi-runtime-smoke \
+              -o jsonpath='{.status.succeeded}' 2>/dev/null || true)"
+            failed="$(kubectl -n chat-api get job fastapi-runtime-smoke \
+              -o jsonpath='{.status.failed}' 2>/dev/null || true)"
+            if test "${succeeded}" = "1"; then
+              job_phase="Succeeded"
+              break
+            fi
+            if test "${failed}" = "1"; then
+              job_phase="Failed"
+              break
+            fi
+            sleep 5
+          done
           kubectl -n chat-api logs job/fastapi-runtime-smoke
+          test "${job_phase}" = "Succeeded"
 
       - name: Verify CrewAI rollout and image
         run: |
