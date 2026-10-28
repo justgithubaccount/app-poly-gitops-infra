@@ -58,6 +58,9 @@ jobs:
           scandir: './scripts'
           severity: warning
 
+      - name: Test disposable GitOps workflow
+        run: bash tests/test_ephemeral_smoke.sh
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest
