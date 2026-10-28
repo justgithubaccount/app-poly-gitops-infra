@@ -11,6 +11,8 @@ bash "${repo_root}/tests/test_wait_for_kubernetes.sh"
 bash "${repo_root}/tests/test_wait_for_argocd_application.sh"
 bash "${repo_root}/tests/test_fastapi_runtime_smoke.sh"
 bash "${repo_root}/tests/test_verify_jaeger_trace.sh"
+bash "${repo_root}/tests/test_verify_loki_log.sh"
+bash "${repo_root}/tests/test_dev_cluster_workflow.sh"
 
 grep -Eq 'source[[:space:]]*=[[:space:]]*"timeweb-cloud/timeweb-cloud"' "${tf_dir}/versions.tf"
 grep -Eq 'version[[:space:]]*=[[:space:]]*"~> 1\.8"' "${tf_dir}/versions.tf"
