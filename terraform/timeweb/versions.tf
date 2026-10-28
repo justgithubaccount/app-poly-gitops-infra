@@ -1,9 +1,10 @@
 terraform {
-  required_version = ">= 0.13"
+  required_version = ">= 1.6, < 2.0"
 
   required_providers {
     twc = {
-      source = "tf.timeweb.cloud/timeweb-cloud/timeweb-cloud"
+      source  = "timeweb-cloud/timeweb-cloud"
+      version = "~> 1.8"
     }
   }
 }
