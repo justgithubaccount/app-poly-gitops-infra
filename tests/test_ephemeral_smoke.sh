@@ -35,6 +35,7 @@ grep -q 'kubectl -n crewai-system create job crewai-healthcheck' "${workflow}"
 grep -q 'http://crewai/health' "${workflow}"
 grep -q 'http://crewai/flows' "${workflow}"
 grep -q 'http://crewai/agents' "${workflow}"
+grep -q 'KUBECONFIG=/tmp/auto-k8s-pilot-kubeconfig kubectl get pods' "${workflow}"
 ! grep -q 'helm upgrade --install chat-api' "${workflow}"
 grep -q 'bash scripts/wait-for-kubernetes.sh' "${workflow}"
 ! grep -q 'kubectl -n app-smoke create deployment' "${workflow}"
@@ -48,6 +49,7 @@ grep -q 'path: clusters/smoke' "${root_app}"
 ! grep -Eq 'targetRevision: [0-9a-f]{40}' "${root_app}"
 
 grep -q 'bash tests/test_ephemeral_smoke.sh' "${repo_root}/.github/workflows/ci.yaml"
+grep -q 'github_token:.*secrets.GITHUB_TOKEN' "${repo_root}/.github/workflows/ci.yaml"
 
 if grep -Eq 'AWS_ACCESS_KEY_ID=[A-Z0-9]{10,}|AWS_SECRET_ACCESS_KEY=[A-Za-z0-9/+]{20,}' "${repo_root}/.env.example"; then
   echo "credential-like value found in .env.example" >&2

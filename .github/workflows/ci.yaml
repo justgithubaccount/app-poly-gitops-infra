@@ -82,3 +82,4 @@ jobs:
         with:
           working_directory: terraform/timeweb
           soft_fail: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}

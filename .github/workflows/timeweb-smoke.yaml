@@ -109,8 +109,8 @@ jobs:
           timeout 6m kubectl -n crewai-system wait \
             --for=condition=complete job/crewai-healthcheck --timeout=5m
           kubectl -n crewai-system logs job/crewai-healthcheck
-          kubectl -n crewai-system exec deployment/crewai -- \
-            kubectl get pods --all-namespaces --request-timeout=20s
+          kubectl -n crewai-system exec deployment/crewai -- /bin/sh -c \
+            'KUBECONFIG=/tmp/auto-k8s-pilot-kubeconfig kubectl get pods --all-namespaces --request-timeout=20s'
 
       - name: Kubernetes diagnostics
         if: failure() && steps.apply.outcome == 'success'
