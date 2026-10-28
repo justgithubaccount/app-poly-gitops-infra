@@ -35,7 +35,8 @@ start_server() {
 
 # A valid FastAPI implementation must pass the complete user-visible flow.
 start_server
-bash "${smoke_script}" "http://127.0.0.1:$(cat "${port_file}")"
+success_output="$(bash "${smoke_script}" "http://127.0.0.1:$(cat "${port_file}")")"
+grep -q 'FASTAPI_TRACE_ID=00000000000000000000000000000001' <<<"${success_output}"
 
 # A 200 response containing the application's wrapped LLM error must fail smoke.
 start_server --chat-error
