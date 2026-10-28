@@ -18,3 +18,22 @@ output "kubeconfig" {
   value       = module.k8s.kubeconfig
   sensitive   = true
 }
+
+output "estimated_run_cost_rub" {
+  description = "Estimated infrastructure cost for max_runtime_minutes"
+  value       = local.estimated_run_rub
+}
+
+output "selected_presets" {
+  description = "Preset IDs and monthly prices selected by the provider"
+  value = {
+    master = {
+      id                = data.twc_k8s_preset.master.id
+      monthly_price_rub = data.twc_k8s_preset.master.price
+    }
+    worker = {
+      id                = data.twc_k8s_preset.worker.id
+      monthly_price_rub = data.twc_k8s_preset.worker.price
+    }
+  }
+}

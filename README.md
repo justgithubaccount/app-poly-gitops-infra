@@ -11,6 +11,10 @@ Infrastructure provisioning and ArgoCD bootstrap for GitOps platform.
 - [twc CLI](https://timeweb.cloud/docs/cli) (Timeweb Cloud CLI)
 - Timeweb Cloud account with API token
 
+For the disposable GitHub Actions smoke run, add one repository secret named
+`TF_VAR_TIMEWEB_TOKEN`. The workflow provisions one small worker, deploys the
+application, checks `/health`, and destroys the cluster in the same job.
+
 ## Quick Start
 
 ```bash
@@ -96,10 +100,17 @@ flowchart TB
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `timeweb_token` | - | Timeweb API token (sensitive) |
-| `project_id` | 1115913 | Timeweb project ID |
-| `network_id` | network-... | Timeweb network ID |
+| `project_id` | `null` | Optional Timeweb project ID; account default when omitted |
+| `network_id` | `null` | Optional Timeweb VPC ID |
 | `cluster_name` | gitops-cluster | Kubernetes cluster name |
-| `node_count` | 3 | Number of worker nodes |
+| `location` | ru-1 | Location used for dynamic preset selection |
+| `node_count` | 1 | Number of worker nodes in the disposable environment |
+| `max_runtime_minutes` | 120 | Runtime used for the cost estimate |
+| `max_cost_rub` | 80 | Pre-apply estimated-cost ceiling |
+
+The default local Terraform state is intentional for the single-job disposable
+run. For persistent environments, copy `terraform/timeweb/backend.s3.tf.example`
+to a `.tf` file and pass the bucket/key and credentials outside Git.
 
 ### ArgoCD
 

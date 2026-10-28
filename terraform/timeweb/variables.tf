@@ -5,15 +5,15 @@ variable "timeweb_token" {
 }
 
 variable "project_id" {
-  description = "Timeweb project ID"
+  description = "Optional Timeweb project ID; null uses the account default"
   type        = number
-  default     = 1115913
+  default     = null
 }
 
 variable "network_id" {
-  description = "Timeweb network ID"
+  description = "Optional Timeweb VPC ID"
   type        = string
-  default     = "network-114cf1a7c6e9419bb665f0458621c83d"
+  default     = null
 }
 
 variable "cluster_name" {
@@ -22,22 +22,33 @@ variable "cluster_name" {
   default     = "gitops-cluster"
 }
 
-variable "cluster_preset_id" {
-  description = "Cluster preset ID (determines cluster resources)"
-  type        = number
-  default     = 403
+variable "location" {
+  description = "Timeweb location used to select Kubernetes presets"
+  type        = string
+  default     = "ru-1"
 }
 
-variable "node_preset_id" {
-  description = "Node preset ID (determines node resources)"
+variable "master_cpu" {
+  description = "CPU count used to select the control-plane preset"
   type        = number
-  default     = 445
+  default     = 2
+}
+
+variable "worker_cpu" {
+  description = "CPU count used to select the worker preset"
+  type        = number
+  default     = 2
 }
 
 variable "node_count" {
   description = "Number of worker nodes"
   type        = number
-  default     = 3
+  default     = 1
+
+  validation {
+    condition     = var.node_count == 1
+    error_message = "The disposable smoke environment is limited to one worker node."
+  }
 }
 
 variable "k8s_version" {
@@ -49,11 +60,23 @@ variable "k8s_version" {
 variable "network_driver" {
   description = "Network driver (calico, flannel, cilium)"
   type        = string
-  default     = "calico"
+  default     = "flannel"
 }
 
 variable "autoscaling" {
   description = "Enable node autoscaling"
   type        = bool
   default     = false
+}
+
+variable "max_runtime_minutes" {
+  description = "Runtime used for the pre-apply cost estimate"
+  type        = number
+  default     = 120
+}
+
+variable "max_cost_rub" {
+  description = "Maximum estimated infrastructure cost for a smoke run"
+  type        = number
+  default     = 80
 }
