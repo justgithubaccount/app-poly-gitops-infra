@@ -30,6 +30,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Checkout Helm chart
+        uses: actions/checkout@v4
+        with:
+          repository: justgithubaccount/app-poly-gitops-helm
+          ref: c3f071092d36b3cf02728aa7e06785a343e68f3c
+          path: app-chart
+
       - name: Require Timeweb token
         run: test -n "${TF_VAR_timeweb_token}"
 
@@ -64,18 +71,11 @@ jobs:
       - name: Deploy application and smoke health endpoint
         if: steps.apply.outcome == 'success'
         run: |
-          kubectl create namespace app-smoke
-          kubectl -n app-smoke create deployment chat-api \
-            --image=ghcr.io/justgithubaccount/app-poly-gitops-fastapi:1.1.1 \
-            --port=8000
-          kubectl -n app-smoke set resources deployment/chat-api \
-            --requests=cpu=50m,memory=128Mi \
-            --limits=cpu=500m,memory=512Mi
-          kubectl -n app-smoke set env deployment/chat-api \
-            OTEL_TRACES_EXPORTER=none \
-            OTEL_LOGS_EXPORTER=none
-          kubectl -n app-smoke expose deployment chat-api --port=80 --target-port=8000
-          timeout 10m kubectl -n app-smoke rollout status deployment/chat-api --timeout=8m
+          helm upgrade --install chat-api ./app-chart \
+            --namespace app-smoke \
+            --create-namespace \
+            --wait \
+            --timeout 8m
 
           kubectl -n app-smoke create job healthcheck \
             --image=curlimages/curl:8.12.1 \
