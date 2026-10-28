@@ -189,8 +189,13 @@ jobs:
             fi
             sleep 5
           done
-          kubectl -n chat-api logs job/fastapi-runtime-smoke
+          runtime_output="$(kubectl -n chat-api logs job/fastapi-runtime-smoke)"
+          printf '%s\n' "${runtime_output}"
           test "${job_phase}" = "Succeeded"
+          fastapi_trace_id="$(printf '%s\n' "${runtime_output}" | \
+            sed -n 's/^FASTAPI_TRACE_ID=\([0-9a-fA-F]\{32\}\)$/\1/p' | tail -n 1)"
+          test -n "${fastapi_trace_id}"
+          echo "FASTAPI_TRACE_ID=${fastapi_trace_id}" >> "${GITHUB_ENV}"
 
       - name: Verify CrewAI rollout and image
         run: |
@@ -247,8 +252,34 @@ jobs:
             esac
             sleep 5
           done
-          kubectl -n crewai-system logs pod/crewai-debug-verify || true
+          crewai_output="$(kubectl -n crewai-system logs pod/crewai-debug-verify)"
+          printf '%s\n' "${crewai_output}"
           test "${phase}" = "Succeeded"
+          crewai_trace_id="$(printf '%s\n' "${crewai_output}" | jq -r '.metadata.trace_id // empty')"
+          test -n "${crewai_trace_id}"
+          echo "CREWAI_TRACE_ID=${crewai_trace_id}" >> "${GITHUB_ENV}"
+
+      - name: Verify exported traces in Jaeger
+        run: |
+          kubectl -n observability rollout status deployment/jaeger --timeout=10m
+          kubectl -n observability port-forward service/jaeger 16686:16686 \
+            >"${RUNNER_TEMP}/jaeger-port-forward.log" 2>&1 &
+          port_forward_pid=$!
+          cleanup_port_forward() {
+            kill "${port_forward_pid}" 2>/dev/null || true
+            wait "${port_forward_pid}" 2>/dev/null || true
+          }
+          trap cleanup_port_forward EXIT
+          for _ in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:16686/api/v3/services >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          bash scripts/verify-jaeger-trace.sh \
+            http://127.0.0.1:16686 "${FASTAPI_TRACE_ID}" chat-api
+          bash scripts/verify-jaeger-trace.sh \
+            http://127.0.0.1:16686 "${CREWAI_TRACE_ID}" auto-k8s-pilot
 
       - name: Kubernetes diagnostics
         if: failure()

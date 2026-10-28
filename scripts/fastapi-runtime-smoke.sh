@@ -77,6 +77,8 @@ assert_reply "${work_dir}/project-chat.json"
 request GET "/api/v1/projects/${project_id}/history" "${work_dir}/history.json"
 grep -Fq "${project_id}" "${work_dir}/history.json"
 grep -Fq "${project_message}" "${work_dir}/history.json"
+trace_id="$(sed -n 's/.*"trace_id"[[:space:]]*:[[:space:]]*"\([0-9a-fA-F]\{32\}\)".*/\1/p' "${work_dir}/history.json")"
+test -n "${trace_id}"
 
 http_code="$(curl --silent --show-error --output "${work_dir}/missing.json" \
   --write-out '%{http_code}' \
@@ -94,4 +96,5 @@ http_code="$(curl --silent --show-error --output "${work_dir}/invalid.json" \
   "${base_url}/api/v1/chat")"
 test "${http_code}" = "422"
 
+printf '%s\n' "FASTAPI_TRACE_ID=${trace_id}"
 printf '%s\n' "FastAPI runtime smoke passed: health, projects, live chat, project chat, history, and validation"

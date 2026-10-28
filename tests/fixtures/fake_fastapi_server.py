@@ -14,6 +14,7 @@ class Handler(BaseHTTPRequestHandler):
     project_name = ""
     history: list[dict[str, str]] = []
     chat_error = False
+    trace_id = "00000000000000000000000000000001"
 
     def log_message(self, format: str, *args: object) -> None:
         return
@@ -62,7 +63,7 @@ class Handler(BaseHTTPRequestHandler):
                     "id": "history-1",
                     "project_id": self.project_id,
                     "messages": payload["messages"],
-                    "trace_id": None,
+                    "trace_id": self.trace_id,
                     "span_id": None,
                     "timestamp": "2026-10-28T00:00:00Z",
                 }
