@@ -71,20 +71,18 @@ jobs:
           kubectl -n app-smoke set resources deployment/chat-api \
             --requests=cpu=50m,memory=128Mi \
             --limits=cpu=500m,memory=512Mi
+          kubectl -n app-smoke set env deployment/chat-api \
+            OTEL_TRACES_EXPORTER=none \
+            OTEL_LOGS_EXPORTER=none
           kubectl -n app-smoke expose deployment chat-api --port=80 --target-port=8000
           timeout 10m kubectl -n app-smoke rollout status deployment/chat-api --timeout=8m
 
-          kubectl -n app-smoke port-forward service/chat-api 18080:80 > "${RUNNER_TEMP}/port-forward.log" 2>&1 &
-          forward_pid=$!
-          trap 'kill "${forward_pid}" 2>/dev/null || true' EXIT
-
-          for _ in $(seq 1 30); do
-            if curl --silent --show-error --fail http://127.0.0.1:18080/health; then
-              exit 0
-            fi
-            sleep 2
-          done
-          exit 1
+          kubectl -n app-smoke create job healthcheck \
+            --image=curlimages/curl:8.12.1 \
+            -- /bin/sh -c \
+            'curl --silent --show-error --fail --retry 30 --retry-delay 2 --retry-connrefused http://chat-api/health'
+          timeout 6m kubectl -n app-smoke wait --for=condition=complete job/healthcheck --timeout=5m
+          kubectl -n app-smoke logs job/healthcheck
 
       - name: Kubernetes diagnostics
         if: failure() && steps.apply.outcome == 'success'
