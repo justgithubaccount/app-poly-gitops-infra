@@ -11,6 +11,10 @@ on:
         description: Versioned app-poly-gitops-k8s release to reconcile
         required: true
         type: string
+      expected_fastapi_tag:
+        description: FastAPI image tag expected after reconciliation
+        required: true
+        type: string
       expected_crewai_tag:
         description: CrewAI image tag expected after reconciliation
         required: true
@@ -31,6 +35,7 @@ jobs:
     env:
       STATE_KEY: ${{ secrets.TIMEWEB_DEBUG_STATE_KEY }}
       GITOPS_REVISION: ${{ inputs.gitops_revision }}
+      EXPECTED_FASTAPI_TAG: ${{ inputs.expected_fastapi_tag }}
       EXPECTED_CREWAI_TAG: ${{ inputs.expected_crewai_tag }}
 
     steps:
@@ -88,6 +93,87 @@ jobs:
           bash scripts/wait-for-argocd-application.sh chat-api 900
           bash scripts/wait-for-argocd-application.sh crewai 900
           kubectl -n argocd get applications gitops-smoke-root chat-api crewai
+
+      - name: Verify FastAPI rollout and image
+        run: |
+          expected_image="ghcr.io/justgithubaccount/app-poly-gitops-fastapi:${EXPECTED_FASTAPI_TAG}"
+          image=""
+          for _ in $(seq 1 120); do
+            image="$(kubectl -n chat-api get deployment chat-api \
+              -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)"
+            if test "${image}" = "${expected_image}"; then
+              break
+            fi
+            sleep 5
+          done
+          test "${image}" = "${expected_image}"
+          kubectl -n chat-api rollout status deployment/chat-api --timeout=10m
+          echo "FastAPI image: ${image}"
+
+      - name: Execute FastAPI application flow
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          test -n "${OPENAI_API_KEY}"
+
+          cleanup_fastapi_smoke() {
+            exit_code=$?
+            trap - EXIT
+            if test "${exit_code}" -ne 0; then
+              kubectl -n chat-api logs deployment/chat-api --since=10m --tail=-1 || true
+            fi
+            kubectl -n chat-api delete job fastapi-runtime-smoke --ignore-not-found --wait=true || true
+            kubectl -n chat-api delete configmap fastapi-runtime-smoke --ignore-not-found || true
+            kubectl -n chat-api set env deployment/chat-api \
+              OPENROUTER_API_KEY- OPENROUTER_API_URL- OPENROUTER_MODEL- || true
+            kubectl -n chat-api delete secret fastapi-runtime-smoke-llm --ignore-not-found || true
+            kubectl -n chat-api rollout status deployment/chat-api --timeout=10m || true
+            exit "${exit_code}"
+          }
+          trap cleanup_fastapi_smoke EXIT
+
+          kubectl -n chat-api create secret generic fastapi-runtime-smoke-llm \
+            --from-literal=OPENROUTER_API_KEY="${OPENAI_API_KEY}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n chat-api set env deployment/chat-api \
+            --from=secret/fastapi-runtime-smoke-llm
+          kubectl -n chat-api set env deployment/chat-api \
+            OPENROUTER_API_URL=https://api.openai.com/v1/chat/completions \
+            OPENROUTER_MODEL=gpt-4o-mini
+          kubectl -n chat-api rollout status deployment/chat-api --timeout=10m
+
+          kubectl -n chat-api create configmap fastapi-runtime-smoke \
+            --from-file=smoke.sh=scripts/fastapi-runtime-smoke.sh \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n chat-api delete job fastapi-runtime-smoke --ignore-not-found --wait=true
+          kubectl -n chat-api apply -f - <<'YAML'
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: fastapi-runtime-smoke
+          spec:
+            backoffLimit: 0
+            activeDeadlineSeconds: 600
+            template:
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: smoke
+                    image: curlimages/curl:8.12.1
+                    command: ["/bin/sh", "/smoke/smoke.sh"]
+                    args: ["http://chat-api"]
+                    volumeMounts:
+                      - name: smoke-script
+                        mountPath: /smoke
+                        readOnly: true
+                volumes:
+                  - name: smoke-script
+                    configMap:
+                      name: fastapi-runtime-smoke
+          YAML
+          timeout 11m kubectl -n chat-api wait \
+            --for=condition=complete job/fastapi-runtime-smoke --timeout=10m
+          kubectl -n chat-api logs job/fastapi-runtime-smoke
 
       - name: Verify CrewAI rollout and image
         run: |
@@ -153,6 +239,8 @@ jobs:
           kubectl get nodes -o wide || true
           kubectl get pods --all-namespaces -o wide || true
           kubectl -n argocd get applications -o wide || true
+          kubectl -n chat-api describe deployment/chat-api || true
+          kubectl -n chat-api logs deployment/chat-api --since=30m --tail=-1 || true
           kubectl -n crewai-system describe deployment/crewai || true
           kubectl -n crewai-system logs deployment/crewai --since=30m --tail=-1 || true
           kubectl -n crewai-system logs pod/crewai-debug-verify || true
