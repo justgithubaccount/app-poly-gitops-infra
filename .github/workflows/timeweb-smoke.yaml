@@ -2,9 +2,6 @@ name: Timeweb disposable smoke
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - codex/timeweb-ephemeral-smoke
 
 permissions:
   contents: read
@@ -29,13 +26,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Checkout Helm chart
-        uses: actions/checkout@v4
-        with:
-          repository: justgithubaccount/app-poly-gitops-helm
-          ref: v0.4.0
-          path: app-chart
 
       - name: Require Timeweb token
         run: test -n "${TF_VAR_timeweb_token}"
@@ -68,29 +58,50 @@ jobs:
         if: steps.apply.outcome == 'success'
         run: bash scripts/wait-for-kubernetes.sh
 
-      - name: Deploy application and smoke health endpoint
+      - name: Bootstrap Argo CD
         if: steps.apply.outcome == 'success'
         run: |
-          helm upgrade --install chat-api ./app-chart \
-            --namespace app-smoke \
+          helm repo add argo https://argoproj.github.io/argo-helm
+          helm repo update
+          helm upgrade --install argocd argo/argo-cd \
+            --namespace argocd \
             --create-namespace \
+            --version "9.1.6" \
+            --values bootstrap/argocd/values.yaml \
+            --set-json 'extraObjects=[]' \
             --wait \
-            --timeout 8m
+            --timeout 15m
+          kubectl -n argocd wait --for=condition=Available deployment --all --timeout=10m
 
-          kubectl -n app-smoke create job healthcheck \
+      - name: Reconcile application through GitOps
+        if: steps.apply.outcome == 'success'
+        run: |
+          kubectl apply -f bootstrap/argocd/gitops-smoke-root.yaml
+          bash scripts/wait-for-argocd-application.sh gitops-smoke-root 600 sync-only
+          bash scripts/wait-for-argocd-application.sh chat-api 900
+          kubectl -n argocd get applications gitops-smoke-root chat-api
+
+      - name: Smoke health endpoint
+        if: steps.apply.outcome == 'success'
+        run: |
+          kubectl -n chat-api create job healthcheck \
             --image=curlimages/curl:8.12.1 \
             -- /bin/sh -c \
             'curl --silent --show-error --fail --retry 30 --retry-delay 2 --retry-connrefused http://chat-api/health'
-          timeout 6m kubectl -n app-smoke wait --for=condition=complete job/healthcheck --timeout=5m
-          kubectl -n app-smoke logs job/healthcheck
+          timeout 6m kubectl -n chat-api wait --for=condition=complete job/healthcheck --timeout=5m
+          kubectl -n chat-api logs job/healthcheck
 
       - name: Kubernetes diagnostics
         if: failure() && steps.apply.outcome == 'success'
         run: |
           kubectl get nodes -o wide || true
           kubectl get pods --all-namespaces -o wide || true
-          kubectl -n app-smoke describe deployment/chat-api || true
-          kubectl -n app-smoke logs deployment/chat-api --tail=200 || true
+          kubectl -n argocd get applications -o wide || true
+          kubectl -n argocd get application gitops-smoke-root -o yaml || true
+          kubectl -n argocd get application chat-api -o yaml || true
+          kubectl -n argocd logs statefulset/argocd-application-controller --tail=200 || true
+          kubectl -n chat-api describe deployment/chat-api || true
+          kubectl -n chat-api logs deployment/chat-api --tail=200 || true
 
       - name: Terraform destroy
         if: always() && steps.init.outcome == 'success'
