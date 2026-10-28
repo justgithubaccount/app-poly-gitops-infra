@@ -158,6 +158,11 @@ jobs:
           kubectl -n argocd annotate application gitops-smoke-root \
             argocd.argoproj.io/refresh=hard \
             --overwrite
+          sync_patch="$(jq -nc --arg revision "${GITOPS_REVISION}" \
+            '{operation:{sync:{revision:$revision,prune:true,syncOptions:["CreateNamespace=true"]}}}')"
+          kubectl -n argocd patch application gitops-smoke-root \
+            --type merge \
+            --patch "${sync_patch}"
           bash scripts/wait-for-argocd-application.sh gitops-smoke-root 1200 sync-only
           bash scripts/wait-for-argocd-application.sh longhorn 1200
           bash scripts/wait-for-argocd-application.sh cloudnative-pg 1200
@@ -256,28 +261,22 @@ jobs:
       - name: Verify traces and correlated logs
         if: steps.apply.outcome == 'success'
         run: |
-          kubectl -n observability port-forward service/jaeger 16686:16686 \
-            >"${RUNNER_TEMP}/jaeger-port-forward.log" 2>&1 &
-          jaeger_pid=$!
           kubectl -n observability port-forward service/loki 3100:3100 \
             >"${RUNNER_TEMP}/loki-port-forward.log" 2>&1 &
           loki_pid=$!
           cleanup_port_forwards() {
-            kill "${jaeger_pid}" "${loki_pid}" 2>/dev/null || true
-            wait "${jaeger_pid}" "${loki_pid}" 2>/dev/null || true
+            kill "${loki_pid}" 2>/dev/null || true
+            wait "${loki_pid}" 2>/dev/null || true
           }
           trap cleanup_port_forwards EXIT
           for _ in $(seq 1 60); do
-            if curl --silent --fail http://127.0.0.1:16686/api/v3/services >/dev/null && \
-              curl --silent --fail http://127.0.0.1:3100/ready >/dev/null; then
+            if curl --silent --fail http://127.0.0.1:3100/ready >/dev/null; then
               break
             fi
             sleep 1
           done
-          bash scripts/verify-jaeger-trace.sh \
-            http://127.0.0.1:16686 "${FASTAPI_TRACE_ID}" chat-api
-          bash scripts/verify-jaeger-trace.sh \
-            http://127.0.0.1:16686 "${CREWAI_TRACE_ID}" auto-k8s-pilot
+          bash scripts/verify-vector-trace.sh "${FASTAPI_TRACE_ID}" chat-api
+          bash scripts/verify-vector-trace.sh "${CREWAI_TRACE_ID}" auto-k8s-pilot
           bash scripts/verify-loki-log.sh \
             http://127.0.0.1:3100 "${FASTAPI_TRACE_ID}" chat-api
 
@@ -288,6 +287,8 @@ jobs:
           kubectl get pods --all-namespaces -o wide || true
           kubectl get pvc --all-namespaces || true
           kubectl -n argocd get applications -o wide || true
+          kubectl -n argocd get application gitops-smoke-root -o yaml || true
+          kubectl -n argocd get application longhorn -o yaml || true
           kubectl -n observability get all || true
           kubectl -n observability logs deployment/vector-gateway --tail=200 || true
           kubectl -n observability logs statefulset/loki --tail=200 || true

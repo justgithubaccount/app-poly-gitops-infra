@@ -19,6 +19,8 @@ grep -Eq 'terraform .*apply' "${workflow}"
 
 grep -q 'path: clusters/dev' "${workflow}"
 grep -q 'kubectl -n argocd patch application gitops-smoke-root' "${workflow}"
+grep -q "operation:{sync:" "${workflow}"
+grep -q 'prune:true' "${workflow}"
 grep -q 'wait-for-argocd-application.sh vector-gateway' "${workflow}"
 grep -q 'wait-for-argocd-application.sh loki' "${workflow}"
 grep -q 'wait-for-argocd-application.sh grafana' "${workflow}"
@@ -29,7 +31,11 @@ grep -q 'chat-openrouter' "${workflow}"
 grep -q 'crewai-llm' "${workflow}"
 grep -q 'scripts/fastapi-runtime-smoke.sh' "${workflow}"
 grep -q 'http://crewai/run/k8s-healthcheck' "${workflow}"
-grep -q 'scripts/verify-jaeger-trace.sh' "${workflow}"
+grep -q 'scripts/verify-vector-trace.sh' "${workflow}"
+if grep -q 'service/jaeger' "${workflow}"; then
+  echo 'dev workflow still depends on Jaeger' >&2
+  exit 1
+fi
 grep -q 'scripts/verify-loki-log.sh' "${workflow}"
 
 grep -q 'actions/upload-artifact@v4' "${workflow}"
