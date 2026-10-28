@@ -28,6 +28,14 @@ expected CrewAI image tag. This workflow reconciles and tests applications only;
 it never applies or destroys Terraform infrastructure. It also verifies the exact
 FastAPI and CrewAI trace IDs through Jaeger's API v3.
 
+To promote the retained two-CPU smoke cluster to the complete application
+platform, run `Timeweb retained dev deploy`. It applies the bounded worker resize
+through the same Terraform state and cost guard, switches the Argo CD root to
+`clusters/dev`, verifies FastAPI and CrewAI, checks traces through Vector and
+Jaeger, and checks the matching FastAPI log in Loki. It never destroys the
+cluster and publishes a refreshed encrypted state artifact under its own run ID;
+use that new run ID for later verification or cleanup.
+
 The smoke workflow accepts `location=ru-1` or `location=nl-1`. Use `nl-1` when
 the application must call an API that does not serve requests from Russia; the
 same preset lookup and cost guard are applied before Terraform creates anything.
