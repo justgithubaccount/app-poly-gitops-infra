@@ -95,11 +95,24 @@ jobs:
       - name: Terraform init
         run: terraform -chdir="${TF_DIR}" init
 
-      - name: Preserve retained cluster identity
+      - name: Preserve retained Kubernetes version and cluster identity
         run: |
           cluster_name="$(terraform -chdir="${TF_DIR}" output -raw cluster_name)"
           test -n "${cluster_name}"
+          k8s_version="$(
+            terraform -chdir="${TF_DIR}" show -json | jq -er '
+              first(
+                .. | objects |
+                select(.address? == "module.k8s.twc_k8s_cluster.main") |
+                .values.version |
+                select(type == "string" and length > 0)
+              )
+            '
+          )"
+          test -n "${k8s_version}"
           echo "TF_VAR_cluster_name=${cluster_name}" >> "${GITHUB_ENV}"
+          echo "TF_VAR_k8s_version=${k8s_version}" >> "${GITHUB_ENV}"
+          echo "Preserving retained Kubernetes version ${k8s_version}"
 
       - name: Terraform plan with cost guard
         run: terraform -chdir="${TF_DIR}" plan -out=dev.tfplan
