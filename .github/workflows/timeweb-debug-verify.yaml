@@ -140,11 +140,8 @@ jobs:
           kubectl -n chat-api create secret generic fastapi-runtime-smoke-llm \
             --from-literal=OPENROUTER_API_KEY="${OPENAI_API_KEY}" \
             --dry-run=client -o yaml | kubectl apply -f -
-          kubectl -n chat-api set env deployment/chat-api \
-            --from=secret/fastapi-runtime-smoke-llm
-          kubectl -n chat-api set env deployment/chat-api \
-            OPENROUTER_API_URL=https://api.openai.com/v1/chat/completions \
-            OPENROUTER_MODEL=gpt-4o-mini
+          bash scripts/configure-fastapi-smoke-env.sh \
+            chat-api chat-api fastapi-runtime-smoke-llm
           kubectl -n chat-api rollout status deployment/chat-api --timeout=10m
 
           kubectl -n chat-api create configmap fastapi-runtime-smoke \

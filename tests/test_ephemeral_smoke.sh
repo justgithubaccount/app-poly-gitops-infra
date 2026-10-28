@@ -9,6 +9,7 @@ verify_workflow="${repo_root}/.github/workflows/timeweb-debug-verify.yaml"
 
 bash "${repo_root}/tests/test_wait_for_kubernetes.sh"
 bash "${repo_root}/tests/test_wait_for_argocd_application.sh"
+bash "${repo_root}/tests/test_configure_fastapi_smoke_env.sh"
 bash "${repo_root}/tests/test_fastapi_runtime_smoke.sh"
 
 grep -Eq 'source[[:space:]]*=[[:space:]]*"timeweb-cloud/timeweb-cloud"' "${tf_dir}/versions.tf"
