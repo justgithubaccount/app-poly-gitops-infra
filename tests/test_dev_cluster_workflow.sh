@@ -35,7 +35,11 @@ grep -q 'chat-openrouter' "${workflow}"
 grep -q 'crewai-llm' "${workflow}"
 grep -q 'scripts/fastapi-runtime-smoke.sh' "${workflow}"
 grep -q 'http://crewai/run/k8s-healthcheck' "${workflow}"
+grep -q 'traceparent: 00-${CREWAI_TRACE_ID}-3132333435363738-01' "${workflow}"
+grep -q 'CREWAI_TRACE_TOKEN=' "${workflow}"
 grep -q 'scripts/verify-vector-trace.sh' "${workflow}"
+grep -q '"${CREWAI_TRACE_ID}" auto-k8s-pilot 30 2 "${CREWAI_TRACE_TOKEN}"' \
+  "${workflow}"
 if grep -q 'service/jaeger' "${workflow}"; then
   echo 'dev workflow still depends on Jaeger' >&2
   exit 1

@@ -229,21 +229,29 @@ jobs:
       - name: Execute CrewAI Kubernetes health flow
         if: steps.apply.outcome == 'success'
         run: |
+          crewai_trace_token="$(printf 'gh%014d' "${GITHUB_RUN_ID}")"
+          test "${#crewai_trace_token}" -eq 16
+          crewai_trace_id="$(printf '%s' "${crewai_trace_token}" | \
+            od -An -tx1 | tr -d '[:space:]')"
+          test "${#crewai_trace_id}" -eq 32
           kubectl -n crewai-system delete pod crewai-dev-verify --ignore-not-found
           kubectl -n crewai-system run crewai-dev-verify \
             --restart=Never \
             --image=curlimages/curl:8.12.1 \
+            --env="CREWAI_TRACE_ID=${crewai_trace_id}" \
             -- /bin/sh -c '
               set -eu
               curl --silent --show-error --fail \
                 --max-time 900 \
                 -X POST \
                 -H "Content-Type: application/json" \
+                -H "traceparent: 00-${CREWAI_TRACE_ID}-3132333435363738-01" \
                 -d "{\"namespace\":\"crewai-system\"}" \
                 http://crewai/run/k8s-healthcheck > /tmp/result.json
               cat /tmp/result.json
               grep -q "\"task\":\"k8s_pods_overview\"" /tmp/result.json
               grep -q "\"task\":\"cluster_summary\"" /tmp/result.json
+              grep -q "\"trace_id\":\"${CREWAI_TRACE_ID}\"" /tmp/result.json
               ! grep -q "\"output\":\"ERROR" /tmp/result.json
             '
           timeout 16m kubectl -n crewai-system wait \
@@ -253,8 +261,10 @@ jobs:
           printf '%s\n' "${crewai_output}"
           crewai_trace_id="$(printf '%s\n' "${crewai_output}" | \
             jq -r '.metadata.trace_id // empty')"
-          test -n "${crewai_trace_id}"
+          test "${crewai_trace_id}" = "$(printf '%s' "${crewai_trace_token}" | \
+            od -An -tx1 | tr -d '[:space:]')"
           echo "CREWAI_TRACE_ID=${crewai_trace_id}" >> "${GITHUB_ENV}"
+          echo "CREWAI_TRACE_TOKEN=${crewai_trace_token}" >> "${GITHUB_ENV}"
 
       - name: Verify traces and correlated logs
         if: steps.apply.outcome == 'success'
@@ -274,7 +284,8 @@ jobs:
             sleep 1
           done
           bash scripts/verify-vector-trace.sh "${FASTAPI_TRACE_ID}" chat-api
-          bash scripts/verify-vector-trace.sh "${CREWAI_TRACE_ID}" auto-k8s-pilot
+          bash scripts/verify-vector-trace.sh \
+            "${CREWAI_TRACE_ID}" auto-k8s-pilot 30 2 "${CREWAI_TRACE_TOKEN}"
           bash scripts/verify-loki-log.sh \
             http://127.0.0.1:3100 "${FASTAPI_TRACE_ID}" chat-api
 
