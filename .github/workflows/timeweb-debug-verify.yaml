@@ -1,0 +1,137 @@
+name: Timeweb retained debug verify
+
+on:
+  workflow_dispatch:
+    inputs:
+      provision_run_id:
+        description: Run ID of the retained Timeweb smoke/debug workflow
+        required: true
+        type: string
+      gitops_revision:
+        description: Versioned app-poly-gitops-k8s release to reconcile
+        required: true
+        type: string
+      expected_crewai_tag:
+        description: CrewAI image tag expected after reconciliation
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: timeweb-debug-${{ inputs.provision_run_id }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      STATE_KEY: ${{ secrets.TIMEWEB_DEBUG_STATE_KEY }}
+      GITOPS_REVISION: ${{ inputs.gitops_revision }}
+      EXPECTED_CREWAI_TAG: ${{ inputs.expected_crewai_tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Require debug state key
+        run: test -n "${STATE_KEY}"
+
+      - name: Download retained debug state
+        uses: actions/download-artifact@v4
+        with:
+          name: timeweb-debug-state-${{ inputs.provision_run_id }}
+          path: ${{ runner.temp }}/timeweb-debug-state
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.provision_run_id }}
+
+      - name: Restore kubeconfig
+        run: |
+          openssl enc -d -aes-256-cbc -pbkdf2 \
+            -in "${RUNNER_TEMP}/timeweb-debug-state/timeweb-debug-state.enc" \
+            -out "${RUNNER_TEMP}/timeweb-debug-state.tar.gz" \
+            -pass env:STATE_KEY
+          mkdir -p "${RUNNER_TEMP}/restored-debug-state"
+          tar -C "${RUNNER_TEMP}/restored-debug-state" \
+            -xzf "${RUNNER_TEMP}/timeweb-debug-state.tar.gz"
+          chmod 600 "${RUNNER_TEMP}/restored-debug-state/kubeconfig"
+          echo "KUBECONFIG=${RUNNER_TEMP}/restored-debug-state/kubeconfig" >> "${GITHUB_ENV}"
+
+      - name: Reconcile requested GitOps release
+        run: |
+          patch="$(jq -nc --arg revision "${GITOPS_REVISION}" \
+            '{spec:{source:{targetRevision:$revision}}}')"
+          kubectl -n argocd patch application gitops-smoke-root \
+            --type merge \
+            --patch "${patch}"
+          kubectl -n argocd annotate application gitops-smoke-root \
+            argocd.argoproj.io/refresh=hard \
+            --overwrite
+          bash scripts/wait-for-argocd-application.sh gitops-smoke-root 600 sync-only
+          bash scripts/wait-for-argocd-application.sh chat-api 900
+          bash scripts/wait-for-argocd-application.sh crewai 900
+          kubectl -n argocd get applications gitops-smoke-root chat-api crewai
+
+      - name: Verify CrewAI rollout and image
+        run: |
+          kubectl -n crewai-system rollout status deployment/crewai --timeout=10m
+          image="$(kubectl -n crewai-system get deployment crewai \
+            -o jsonpath='{.spec.template.spec.containers[0].image}')"
+          echo "CrewAI image: ${image}"
+          test "${image}" = "ghcr.io/justgithubaccount/app-poly-gitops-crewai:${EXPECTED_CREWAI_TAG}"
+          kubectl -n crewai-system exec deployment/crewai -- /bin/sh -c \
+            'KUBECONFIG=/tmp/auto-k8s-pilot-kubeconfig kubectl get pods --all-namespaces --request-timeout=20s'
+
+      - name: Execute CrewAI Kubernetes health flow
+        run: |
+          kubectl -n crewai-system delete pod crewai-debug-verify --ignore-not-found
+          kubectl -n crewai-system run crewai-debug-verify \
+            --restart=Never \
+            --image=curlimages/curl:8.12.1 \
+            -- /bin/sh -c '
+              set -eu
+              curl_exit=0
+              http_code="$(curl --silent --show-error \
+                --output /tmp/result.json \
+                --write-out "%{http_code}" \
+                --max-time 900 \
+                -X POST \
+                -H "Content-Type: application/json" \
+                -d "{\"namespace\":\"crewai-system\"}" \
+                http://crewai/run/k8s-healthcheck)" || curl_exit=$?
+              cat /tmp/result.json
+              test "${curl_exit}" -eq 0
+              test "${http_code}" = "200"
+              grep -q "\"task\":\"k8s_pods_overview\"" /tmp/result.json
+              grep -q "\"task\":\"cluster_summary\"" /tmp/result.json
+              ! grep -q "\"output\":\"ERROR" /tmp/result.json
+            '
+          phase=""
+          for _ in $(seq 1 190); do
+            phase="$(kubectl -n crewai-system get pod crewai-debug-verify \
+              -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+            case "${phase}" in
+              Succeeded) break ;;
+              Failed)
+                kubectl -n crewai-system logs pod/crewai-debug-verify || true
+                exit 1
+                ;;
+            esac
+            sleep 5
+          done
+          kubectl -n crewai-system logs pod/crewai-debug-verify || true
+          test "${phase}" = "Succeeded"
+
+      - name: Kubernetes diagnostics
+        if: failure()
+        run: |
+          kubectl get nodes -o wide || true
+          kubectl get pods --all-namespaces -o wide || true
+          kubectl -n argocd get applications -o wide || true
+          kubectl -n crewai-system describe deployment/crewai || true
+          kubectl -n crewai-system logs deployment/crewai --since=30m --tail=-1 || true
+          kubectl -n crewai-system logs pod/crewai-debug-verify || true
