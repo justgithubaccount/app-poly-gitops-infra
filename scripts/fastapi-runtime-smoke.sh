@@ -4,7 +4,22 @@ set -eu
 base_url="${1:?usage: fastapi-runtime-smoke.sh BASE_URL}"
 base_url="${base_url%/}"
 work_dir="$(mktemp -d)"
-trap 'rm -rf "${work_dir}"' EXIT
+
+cleanup() {
+  exit_code=$?
+  trap - EXIT
+  if test "${exit_code}" -ne 0; then
+    for response_file in "${work_dir}"/*.json; do
+      test -f "${response_file}" || continue
+      printf '%s\n' "--- $(basename "${response_file}") ---" >&2
+      cat "${response_file}" >&2
+      printf '\n' >&2
+    done
+  fi
+  rm -rf "${work_dir}"
+  exit "${exit_code}"
+}
+trap cleanup EXIT
 
 request() {
   method="$1"

@@ -39,7 +39,11 @@ bash "${smoke_script}" "http://127.0.0.1:$(cat "${port_file}")"
 
 # A 200 response containing the application's wrapped LLM error must fail smoke.
 start_server --chat-error
-if bash "${smoke_script}" "http://127.0.0.1:$(cat "${port_file}")"; then
+error_output="$(mktemp)"
+if bash "${smoke_script}" "http://127.0.0.1:$(cat "${port_file}")" \
+  > "${error_output}" 2>&1; then
   echo "runtime smoke accepted an LLM error as success" >&2
   exit 1
 fi
+grep -q 'Ошибка API: invalid key' "${error_output}"
+rm -f "${error_output}"
