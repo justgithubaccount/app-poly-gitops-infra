@@ -6,6 +6,7 @@ tf_dir="${repo_root}/terraform/timeweb"
 workflow="${repo_root}/.github/workflows/timeweb-smoke.yaml"
 cleanup_workflow="${repo_root}/.github/workflows/timeweb-cleanup.yaml"
 verify_workflow="${repo_root}/.github/workflows/timeweb-debug-verify.yaml"
+fastapi_env_script="${repo_root}/scripts/configure-fastapi-smoke-env.sh"
 
 bash "${repo_root}/tests/test_wait_for_kubernetes.sh"
 bash "${repo_root}/tests/test_wait_for_argocd_application.sh"
@@ -82,11 +83,14 @@ grep -q 'kubectl -n argocd patch application gitops-smoke-root' "${verify_workfl
 grep -q 'child_revision=' "${verify_workflow}"
 grep -q 'test "${child_revision}" = "${GITOPS_REVISION}"' "${verify_workflow}"
 grep -q 'ghcr.io/justgithubaccount/app-poly-gitops-fastapi:${EXPECTED_FASTAPI_TAG}' "${verify_workflow}"
-grep -q 'https://api.openai.com/v1/chat/completions' "${verify_workflow}"
+grep -q 'scripts/configure-fastapi-smoke-env.sh' "${verify_workflow}"
 grep -q 'scripts/fastapi-runtime-smoke.sh' "${verify_workflow}"
 grep -q 'test "${image}" = "${expected_image}"' "${verify_workflow}"
 grep -q 'http://crewai/run/k8s-healthcheck' "${verify_workflow}"
 ! grep -Eq 'terraform .*destroy|terraform .*apply' "${verify_workflow}"
+
+test -f "${fastapi_env_script}"
+grep -q 'https://api.openai.com/v1/chat/completions' "${fastapi_env_script}"
 
 root_app="${repo_root}/bootstrap/argocd/gitops-smoke-root.yaml"
 test -f "${root_app}"
