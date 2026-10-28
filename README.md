@@ -22,6 +22,11 @@ state/kubeconfig artifact encrypted with the `TIMEWEB_DEBUG_STATE_KEY` repositor
 secret for one day. Delete that cluster by running the `Timeweb cleanup` workflow
 with the provisioning run ID.
 
+To test a newer versioned GitOps release on the retained cluster, run `Timeweb
+retained debug verify` with the provisioning run ID, the GitOps tag, and the
+expected CrewAI image tag. This workflow reconciles and tests applications only;
+it never applies or destroys Terraform infrastructure.
+
 The smoke workflow accepts `location=ru-1` or `location=nl-1`. Use `nl-1` when
 the application must call an API that does not serve requests from Russia; the
 same preset lookup and cost guard are applied before Terraform creates anything.
