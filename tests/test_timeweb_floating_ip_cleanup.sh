@@ -5,6 +5,7 @@ workflow=".github/workflows/timeweb-floating-ip-cleanup.yaml"
 
 test -f "${workflow}"
 grep -Fq 'https://api.timeweb.cloud/api/v1/floating-ips' "${workflow}"
+test "$(grep -Fc '[.ips[] | . as $item |' "${workflow}")" -eq 2
 grep -Fq '($comments | index($item.comment)) != null' "${workflow}"
 grep -Fq '($ips | index($item.ip)) != null' "${workflow}"
 grep -Fq 'if: inputs.delete' "${workflow}"
