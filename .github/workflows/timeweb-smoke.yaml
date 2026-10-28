@@ -66,7 +66,7 @@ jobs:
 
       - name: Wait for Kubernetes
         if: steps.apply.outcome == 'success'
-        run: timeout 12m kubectl wait --for=condition=Ready nodes --all --timeout=10m
+        run: bash scripts/wait-for-kubernetes.sh
 
       - name: Deploy application and smoke health endpoint
         if: steps.apply.outcome == 'success'

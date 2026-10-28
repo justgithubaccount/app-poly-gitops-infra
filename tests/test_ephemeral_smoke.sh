@@ -5,6 +5,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tf_dir="${repo_root}/terraform/timeweb"
 workflow="${repo_root}/.github/workflows/timeweb-smoke.yaml"
 
+bash "${repo_root}/tests/test_wait_for_kubernetes.sh"
+
 grep -Eq 'source[[:space:]]*=[[:space:]]*"timeweb-cloud/timeweb-cloud"' "${tf_dir}/versions.tf"
 grep -Eq 'version[[:space:]]*=[[:space:]]*"~> 1\.8"' "${tf_dir}/versions.tf"
 grep -q 'ref=v0.1.0"' "${tf_dir}/main.tf"
@@ -25,6 +27,7 @@ grep -q 'repository: justgithubaccount/app-poly-gitops-helm' "${workflow}"
 grep -q 'ref: v0.4.0' "${workflow}"
 ! grep -Eq 'ref: [0-9a-f]{40}' "${workflow}"
 grep -q 'helm upgrade --install chat-api' "${workflow}"
+grep -q 'bash scripts/wait-for-kubernetes.sh' "${workflow}"
 ! grep -q 'kubectl -n app-smoke create deployment' "${workflow}"
 
 if grep -Eq 'AWS_ACCESS_KEY_ID=[A-Z0-9]{10,}|AWS_SECRET_ACCESS_KEY=[A-Za-z0-9/+]{20,}' "${repo_root}/.env.example"; then
