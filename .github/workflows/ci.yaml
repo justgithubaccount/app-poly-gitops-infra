@@ -61,6 +61,9 @@ jobs:
       - name: Test disposable GitOps workflow
         run: bash tests/test_ephemeral_smoke.sh
 
+      - name: Test Timeweb floating IP cleanup workflow
+        run: bash tests/test_timeweb_floating_ip_cleanup.sh
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest

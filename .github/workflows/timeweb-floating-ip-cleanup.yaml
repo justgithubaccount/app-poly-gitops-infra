@@ -1,0 +1,92 @@
+name: Timeweb floating IP cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      comments:
+        description: Comma-separated exact Timeweb floating-IP comments
+        required: false
+        type: string
+      ip_addresses:
+        description: Comma-separated exact public IP addresses
+        required: false
+        type: string
+      delete:
+        description: Delete exact matches instead of only auditing them
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TIMEWEB_CLOUD_TOKEN: ${{ secrets.TF_VAR_TIMEWEB_TOKEN }}
+      MATCH_COMMENTS: ${{ inputs.comments }}
+      MATCH_IPS: ${{ inputs.ip_addresses }}
+      DELETE_MATCHES: ${{ inputs.delete }}
+
+    steps:
+      - name: Require token and exact selectors
+        run: |
+          test -n "${TIMEWEB_CLOUD_TOKEN}"
+          test -n "${MATCH_COMMENTS}${MATCH_IPS}"
+
+      - name: Find exact matches
+        id: find
+        run: |
+          comments_json="$(jq -cn --arg value "${MATCH_COMMENTS}" \
+            '$value | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))')"
+          ips_json="$(jq -cn --arg value "${MATCH_IPS}" \
+            '$value | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))')"
+
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${TIMEWEB_CLOUD_TOKEN}" \
+            https://api.timeweb.cloud/api/v1/floating-ips > "${RUNNER_TEMP}/floating-ips.json"
+
+          jq --argjson comments "${comments_json}" --argjson ips "${ips_json}" \
+            '[.floating_ips[] | . as $item |
+              select(
+                ($comments | index($item.comment)) != null or
+                ($ips | index($item.ip)) != null
+              ) |
+              {id, ip, comment, resource_type, resource_id}]' \
+            "${RUNNER_TEMP}/floating-ips.json" > "${RUNNER_TEMP}/matches.json"
+
+          echo "Exact matches:"
+          jq . "${RUNNER_TEMP}/matches.json"
+          echo "match_count=$(jq 'length' "${RUNNER_TEMP}/matches.json")" >> "${GITHUB_OUTPUT}"
+
+      - name: Delete exact matches
+        if: inputs.delete && steps.find.outputs.match_count != '0'
+        run: |
+          jq -r '.[].id' "${RUNNER_TEMP}/matches.json" | while IFS= read -r floating_ip_id; do
+            curl --fail-with-body --silent --show-error \
+              --request DELETE \
+              --header "Authorization: Bearer ${TIMEWEB_CLOUD_TOKEN}" \
+              "https://api.timeweb.cloud/api/v1/floating-ips/${floating_ip_id}"
+          done
+
+      - name: Verify exact matches are absent
+        if: inputs.delete
+        run: |
+          comments_json="$(jq -cn --arg value "${MATCH_COMMENTS}" \
+            '$value | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))')"
+          ips_json="$(jq -cn --arg value "${MATCH_IPS}" \
+            '$value | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))')"
+
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${TIMEWEB_CLOUD_TOKEN}" \
+            https://api.timeweb.cloud/api/v1/floating-ips > "${RUNNER_TEMP}/floating-ips-after.json"
+
+          jq --exit-status --argjson comments "${comments_json}" --argjson ips "${ips_json}" \
+            '[.floating_ips[] | . as $item |
+              select(
+                ($comments | index($item.comment)) != null or
+                ($ips | index($item.ip)) != null
+              )] | length == 0' \
+            "${RUNNER_TEMP}/floating-ips-after.json"
