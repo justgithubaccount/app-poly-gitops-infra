@@ -11,11 +11,12 @@ Infrastructure provisioning and ArgoCD bootstrap for GitOps platform.
 - [twc CLI](https://timeweb.cloud/docs/cli) (Timeweb Cloud CLI)
 - Timeweb Cloud account with API token
 
-For the disposable GitHub Actions smoke run, add one repository secret named
-`TF_VAR_TIMEWEB_TOKEN`. The workflow provisions one small worker, bootstraps
+For the disposable GitHub Actions smoke run, add repository secrets named
+`TF_VAR_TIMEWEB_TOKEN` and `OPENAI_API_KEY`. The workflow provisions one small worker, bootstraps
 Argo CD, reconciles the versioned GitOps root from `app-poly-gitops-k8s`, checks
 both `chat-api` and CrewAI through Argo CD, probes CrewAI discovery endpoints
-and its read-only Kubernetes access, then destroys the cluster in the same job.
+and its read-only Kubernetes access, executes the real Kubernetes health flow,
+then destroys the cluster in the same job.
 
 ## Quick Start
 
