@@ -2,6 +2,33 @@
 
 Infrastructure provisioning and ArgoCD bootstrap for GitOps platform.
 
+## Live application verification without cloud provisioning
+
+`Application live OpenAI smoke (no cloud)` uses the existing `OPENAI_API_KEY`
+repository secret. It starts the FastAPI `v1.1.2` and CrewAI `v0.1.3` releases
+and the reviewed `feat/crewai-automation` UI on a disposable Actions runner.
+Readable release/branch refs are checked against audited commit IDs before
+the step receiving the secret. Source drift fails closed.
+
+The run checks direct FastAPI routes, browser project/chat/history flows,
+CrewAI discovery and default/named execution, and OTLP trace IDs matching UI.
+Its temporary CrewAI flow invokes only the existing tool-free reporting agent
+on explicitly synthetic input. Kubernetes/ArgoCD/Loki/cloud integration is not
+claimed or contacted; no Terraform/Helm/cloud credentials are used.
+
+A runner-local test transport holds the real key and enforces at most **six**
+`gpt-4o-mini` requests, at most **128 output tokens each**, and bounded text
+inputs. Services receive only dummy keys and loopback URLs. No paid retry loop
+or alternate model is allowed. Only a sanitized summary (revisions, outcomes,
+trace IDs, request statuses and token usage) is uploaded, not logs, DB or keys.
+
+Dispatch with `confirm_live=true` once the workflow is on the default branch.
+For the initial unmerged implementation, only pushes on
+`codex/live-application-smoke` with `[live-smoke]` in the final commit message
+opt in to a paid run. Ordinary PR CI runs the guard tests offline, without
+the provider secret. A successful run proves real application/model wiring,
+not a deployed Kubernetes environment. Merging/deploying remains separate.
+
 ## Prerequisites
 
 - [Terraform](https://terraform.io) >= 0.13

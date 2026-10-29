@@ -64,6 +64,9 @@ jobs:
       - name: Test Timeweb floating IP cleanup workflow
         run: bash tests/test_timeweb_floating_ip_cleanup.sh
 
+      - name: Test live application smoke budget guard (offline)
+        run: python3 -m unittest discover -s tests -p test_application_live_smoke.py -v
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest
