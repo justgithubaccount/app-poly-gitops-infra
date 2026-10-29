@@ -1,0 +1,100 @@
+name: Application live OpenAI smoke (no cloud)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_live:
+        description: Allow at most six short real gpt-4o-mini requests
+        type: boolean
+        required: true
+        default: false
+  # Bootstrap/run the new workflow before any merge. Other branch pushes
+  # and PRs never receive the provider secret or trigger paid requests.
+  push:
+    branches: [codex/live-application-smoke]
+    paths:
+      - .github/workflows/application-live-smoke.yaml
+      - scripts/live_smoke/**
+      - tests/test_application_live_smoke.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: application-live-smoke
+  cancel-in-progress: false
+
+jobs:
+  live:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.confirm_live) ||
+      (github.event_name == 'push' && contains(github.event.head_commit.message, '[live-smoke]'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout smoke harness
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Checkout FastAPI release
+        uses: actions/checkout@v7
+        with:
+          repository: justgithubaccount/app-poly-gitops-fastapi
+          ref: v1.1.2
+          path: sources/fastapi
+          persist-credentials: false
+      - name: Checkout CrewAI release
+        uses: actions/checkout@v7
+        with:
+          repository: justgithubaccount/app-poly-gitops-crewai
+          ref: v0.1.3
+          path: sources/crewai
+          persist-credentials: false
+      - name: Checkout reviewed UI implementation
+        uses: actions/checkout@v7
+        with:
+          repository: justgithubaccount/app-poly-gitops-ui
+          ref: feat/crewai-automation
+          path: sources/ui
+          persist-credentials: false
+      - name: Verify audited source revisions before exposing the key
+        run: |
+          test "$(git -C sources/fastapi rev-parse HEAD)" = 6686997d9c4e8d6815886790341d5e185f86bf1a
+          test "$(git -C sources/crewai rev-parse HEAD)" = 0835d3102555e6cef4fb700c56969ecddc6f6ddd
+          test "$(git -C sources/ui rev-parse HEAD)" = 2852b17530f7eac756c3e4b6a3e35b1ef8f7837b
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: sources/ui/.nvmrc
+          cache: npm
+          cache-dependency-path: sources/ui/package-lock.json
+      - name: Offline budget guard tests
+        run: python3 -m unittest discover -s tests -p test_application_live_smoke.py -v
+      - name: Install locked service dependencies
+        run: |
+          uv sync --project sources/fastapi --python 3.12 --locked --dev
+          uv sync --project sources/crewai --python 3.12 --locked --dev
+      - name: Build UI without provider credentials
+        working-directory: sources/ui
+        run: |
+          npx --yes npm@11.19.1 ci
+          npm run check
+          npm run build
+          npx playwright install --with-deps chromium
+      - name: Real application, browser, OpenAI and OTLP verification
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          sources/fastapi/.venv/bin/python scripts/live_smoke/runner.py \
+            --sources "${GITHUB_WORKSPACE}/sources" \
+            --output "${RUNNER_TEMP}/application-live-smoke"
+      - name: Upload sanitized result only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: application-live-smoke-${{ github.run_id }}
+          path: ${{ runner.temp }}/application-live-smoke/summary.json
+          if-no-files-found: ignore
+          retention-days: 7

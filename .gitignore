@@ -38,3 +38,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Python verification helpers
+__pycache__/
+*.py[cod]
