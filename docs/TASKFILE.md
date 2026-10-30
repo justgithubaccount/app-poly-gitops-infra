@@ -25,7 +25,7 @@ All Kubernetes entrypoints use `KUBECONFIG_PATH`, which defaults to
 | `nodes` called missing `scripts/check-nodes.sh` | Direct read-only `kubectl get nodes -o wide` | Revert the Taskfile command only if a maintained script with additional behavior is restored. |
 | `argocd-sync-check.sh` duplicated polling logic | Compatibility wrapper delegates to `wait-for-argocd-application.sh` | Existing path, default kubeconfig (`~/.kube/timeweb-config`), explicit `KUBECONFIG`, defaults (`dev-cluster`, 120 seconds), and success/failure exit behavior remain. Revert the wrapper to restore legacy formatting only. |
 | Bootstrap rendered the chart twice on retry | Render once; retry the same temporary file | Apply behavior and one retry remain. Revert the bootstrap command to restore the old re-rendering behavior. |
-| Root application fetched `main` | `GITOPS_REVISION=v1.5.0`, guarded to a release tag or full SHA | Override with a reviewed release/SHA; revert the variable and command to resume branch tracking. |
+| Root application fetched `main` | `GITOPS_REVISION=v1.5.1`, guarded to a release tag or full SHA | Override with a reviewed release/SHA; revert the variable and command to resume branch tracking. |
 | `seal:*` passed `KEY=value` via argv | `KEY[:ENV_VAR]`; value read from environment and piped to kubeseal | `KEY=value` is intentionally rejected. `seal:postgres` creates `chat-postgres`; legacy `seal:postgree` retains `chat-postgree` for the existing GitOps consumer. |
 
 The repository workflows call `wait-for-argocd-application.sh` directly. The

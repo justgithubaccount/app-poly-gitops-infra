@@ -60,7 +60,7 @@ Review the plan, selected presets, and cost estimate first.
 Task descriptions begin with a side-effect class: `[read-only]`,
 `[local-write]`, `[mutating]`, `[destructive]`, or `[secret-sensitive]`. Use
 `task --list-all` to review the full interface before execution. The default
-GitOps root is `app-poly-gitops-k8s@v1.5.0`; an operator may supply another
+GitOps root is `app-poly-gitops-k8s@v1.5.1`; an operator may supply another
 release tag or full commit SHA with `GITOPS_REVISION=...`.
 
 Useful read and cleanup commands:
@@ -91,7 +91,7 @@ persistent environment, copy `terraform/timeweb/backend.s3.tf.example` to a
 
 Argo CD chart values are in `bootstrap/argocd/values.yaml`. The smoke root is
 `bootstrap/argocd/gitops-smoke-root.yaml` and pins the current released smoke
-contract, `app-poly-gitops-k8s@v1.5.0`.
+contract, `app-poly-gitops-k8s@v1.5.1`.
 
 The `seal:*` tasks are optional manifest-rendering utilities and are not called
 by active dev/smoke workflows. They read secret values from named environment
