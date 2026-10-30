@@ -48,7 +48,7 @@ extraObjects:
             valueFiles:
               - $values/bootstrap/argocd/values.yaml
         - repoURL: https://github.com/justgithubaccount/app-poly-gitops-infra
-          targetRevision: main
+          targetRevision: v0.1.0
           ref: values
       syncPolicy:
         automated:

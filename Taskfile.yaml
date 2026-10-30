@@ -2,6 +2,7 @@ version: '3'
 
 vars:
   ARGOCD_VERSION: "9.1.6"
+  GITOPS_REVISION: "v1.5.0"
   TF_DIR: terraform/timeweb
   KUBECONFIG_PATH: "{{.HOME}}/.kube/timeweb-config"
 
@@ -12,30 +13,30 @@ env:
 
 tasks:
   default:
-    desc: "Show available tasks"
+    desc: "[read-only] Show available tasks"
     cmds:
-      - task --list
+      - task --list-all
 
   # Infrastructure
   init:
-    desc: "Initialize terraform and create cluster"
+    desc: "[mutating] Initialize Terraform and create cluster"
     cmds:
       - terraform -chdir={{.TF_DIR}} init
       - terraform -chdir={{.TF_DIR}} apply -auto-approve -refresh=true
       - task: kubeconfig
 
   refresh:
-    desc: "Refresh Terraform outputs (after code changes)"
+    desc: "[mutating] Refresh Terraform state and outputs"
     cmds:
       - terraform -chdir={{.TF_DIR}} apply -refresh-only -auto-approve
 
   plan:
-    desc: "Show terraform plan"
+    desc: "[read-only] Show Terraform plan"
     cmds:
       - terraform -chdir={{.TF_DIR}} plan
 
   kubeconfig:
-    desc: "Get kubeconfig from Terraform output"
+    desc: "[local-write] Write kubeconfig from Terraform output"
     cmds:
       - mkdir -p {{.HOME}}/.kube
       - terraform -chdir={{.TF_DIR}} output -raw kubeconfig > {{.KUBECONFIG_PATH}}
@@ -44,13 +45,7 @@ tasks:
 
   # Argo CD bootstrap
   bootstrap:
-    desc: "Bootstrap ArgoCD in cluster"
-    vars:
-      HELM_CMD: >-
-        helm template argocd argo/argo-cd
-        --namespace argocd
-        --version {{.ARGOCD_VERSION}}
-        --values bootstrap/argocd/values.yaml
+    desc: "[mutating] Bootstrap Argo CD in cluster"
     cmds:
       - >-
         kubectl --kubeconfig={{.KUBECONFIG_PATH}}
@@ -58,34 +53,55 @@ tasks:
         kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f -
       - helm repo add argo https://argoproj.github.io/argo-helm
       - helm repo update
-      - '{{.HELM_CMD}} | kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f - || {{.HELM_CMD}} | kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f -'
+      - |
+        set -eu
+        render_file="$(mktemp)"
+        trap 'rm -f "${render_file}"' EXIT
+        helm template argocd argo/argo-cd \
+          --namespace argocd \
+          --version {{.ARGOCD_VERSION}} \
+          --values bootstrap/argocd/values.yaml > "${render_file}"
+        if ! kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f "${render_file}"; then
+          echo "Initial Argo CD apply failed. Retrying the same rendered manifest once." >&2
+          kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f "${render_file}"
+        fi
 
   argocd-password:
-    desc: "Get ArgoCD admin password"
+    desc: "[secret-sensitive] Print Argo CD admin password"
     cmds:
       - kubectl --kubeconfig={{.KUBECONFIG_PATH}} -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
 
   argocd-port-forward:
-    desc: "Port-forward ArgoCD UI to localhost:8080"
+    desc: "[read-only] Port-forward Argo CD UI to localhost:8080"
     cmds:
       - kubectl --kubeconfig={{.KUBECONFIG_PATH}} port-forward svc/argocd-server -n argocd 8080:443
 
   # GitOps
   app-of-apps:
-    desc: "Deploy root Application (app-of-apps)"
+    desc: "[mutating] Apply the versioned GitOps root Application"
     cmds:
-      - kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f https://raw.githubusercontent.com/justgithubaccount/app-poly-gitops-k8s/main/platform/core/cluster-bootstrap/app-of-apps.yaml
+      - |
+        set -eu
+        revision='{{.GITOPS_REVISION}}'
+        if ! printf '%s\n' "${revision}" | grep -Eq '^(v[0-9]+\.[0-9]+\.[0-9]+|[0-9a-f]{40})$'; then
+          echo "GITOPS_REVISION requires a release tag or 40-character commit SHA" >&2
+          exit 2
+        fi
+        curl -fsSL "https://raw.githubusercontent.com/justgithubaccount/app-poly-gitops-k8s/${revision}/platform/core/cluster-bootstrap/app-of-apps.yaml" |
+          kubectl --kubeconfig={{.KUBECONFIG_PATH}} create --dry-run=client -f - -o json |
+          jq --arg revision "${revision}" '.spec.source.targetRevision = $revision' |
+          kubectl --kubeconfig={{.KUBECONFIG_PATH}} apply -f -
 
   # Cleanup
   destroy:
-    desc: "Destroy infrastructure (DANGER!)"
+    desc: "[destructive] Destroy all Terraform-managed infrastructure"
     prompt: "This will destroy all infrastructure. Are you sure?"
     cmds:
       - terraform -chdir={{.TF_DIR}} destroy -auto-approve
 
   # Full workflow
   up:
-    desc: "Full setup: init + bootstrap + app-of-apps"
+    desc: "[mutating] Create cluster, bootstrap Argo CD, and apply GitOps root"
     cmds:
       - task: init
       - task: bootstrap
@@ -94,65 +110,70 @@ tasks:
 
   # Diagnostics
   status:
-    desc: "Check ArgoCD status (usage: task status -- [app-name])"
+    desc: "[read-only] Check Argo CD status (usage: task status -- [app-name])"
     cmds:
       - ./scripts/argocd-status.sh {{.CLI_ARGS}}
 
   sync-wait:
-    desc: "Wait for ArgoCD app sync (usage: task sync-wait -- app-name)"
+    desc: "[read-only] Wait for Argo CD app sync (usage: task sync-wait -- app-name)"
     cmds:
       - ./scripts/argocd-sync-check.sh {{.CLI_ARGS}}
 
   nodes:
-    desc: "Check cluster nodes"
+    desc: "[read-only] List cluster nodes"
     cmds:
-      - ./scripts/check-nodes.sh
+      - kubectl --kubeconfig={{.KUBECONFIG_PATH}} get nodes -o wide
 
   # Secrets
   seal:
-    desc: "Create SealedSecret (usage: task seal -- name namespace KEY=value)"
+    desc: "[secret-sensitive] Render SealedSecret (usage: task seal -- name namespace KEY[:ENV_VAR])"
     cmds:
       - ./scripts/seal.sh {{.CLI_ARGS}}
 
   seal:openrouter:
-    desc: "Create OpenRouter SealedSecret from .env"
+    desc: "[secret-sensitive] Render OpenRouter SealedSecret from environment"
     cmds:
-      - ./scripts/seal.sh chat-openrouter chat-api OPENROUTER_API_KEY=$OPENROUTER_API_KEY
+      - ./scripts/seal.sh chat-openrouter chat-api OPENROUTER_API_KEY
 
   seal:github:
-    desc: "Create GitHub repo SealedSecret from .env"
+    desc: "[secret-sensitive] Render GitHub repository SealedSecret from environment"
     cmds:
-      - ./scripts/seal.sh chat-github argocd --repo url=$GITHUB_REPO_URL username=$GITHUB_USERNAME password=$GITHUB_PAT
+      - ./scripts/seal.sh chat-github argocd --repo url:GITHUB_REPO_URL username:GITHUB_USERNAME password:GITHUB_PAT
+
+  seal:postgres:
+    desc: "[secret-sensitive] Render PostgreSQL SealedSecret from environment"
+    cmds:
+      - ./scripts/seal.sh chat-postgres chat-api DATABASE_URL
 
   seal:postgree:
-    desc: "Create PostgreSQL SealedSecret from .env"
+    desc: "[secret-sensitive] Deprecated alias for seal:postgres"
     cmds:
-      - ./scripts/seal.sh chat-postgree chat-api DATABASE_URL=$DATABASE_URL
+      - task: seal:postgres
 
   # Timeweb CLI
   twc:versions:
-    desc: "List available K8s versions"
+    desc: "[read-only] List available Kubernetes versions"
     cmds:
       - twc k8s list-k8s-versions
 
   twc:presets:
-    desc: "List K8s presets (master/worker)"
+    desc: "[read-only] List Kubernetes presets (master/worker)"
     cmds:
       - twc k8s list-presets
 
   twc:list:
-    desc: "List K8s clusters"
+    desc: "[read-only] List Kubernetes clusters"
     cmds:
       - twc k8s list
 
   twc:kubeconfig:
-    desc: "Download kubeconfig for cluster (usage: task twc:kubeconfig -- CLUSTER_ID)"
+    desc: "[local-write] Download kubeconfig (usage: task twc:kubeconfig -- CLUSTER_ID)"
     cmds:
       - twc k8s kubeconfig {{.CLI_ARGS}} -o {{.KUBECONFIG_PATH}}
       - chmod 600 {{.KUBECONFIG_PATH}}
       - echo "Kubeconfig saved to {{.KUBECONFIG_PATH}}"
 
   twc:show:
-    desc: "Show cluster info (usage: task twc:show -- CLUSTER_ID)"
+    desc: "[read-only] Show cluster info (usage: task twc:show -- CLUSTER_ID)"
     cmds:
       - twc k8s show {{.CLI_ARGS}}

@@ -4,7 +4,7 @@
 
 ## Команды
 
-**Taskfile.yaml — источник правды.** Смотри `task --list` для актуального списка команд.
+**Taskfile.yaml — источник правды.** Смотри `task --list-all` для актуального списка команд и классов побочных эффектов.
 
 Основные:
 - `task up` — полный setup (init + bootstrap + app-of-apps)
@@ -16,7 +16,12 @@
 Sealed Secrets:
 - `task seal:openrouter` — создать SealedSecret для OpenRouter API
 - `task seal:github` — создать SealedSecret для GitHub репо
-- `task seal:postgree` — создать SealedSecret для PostgreSQL
+- `task seal:postgres` — создать SealedSecret для PostgreSQL
+- `task seal:postgree` — временный совместимый alias для `seal:postgres`
+
+`seal:*` — опциональные операторские утилиты, они не вызываются активными
+dev/smoke workflow. Значения читаются из переменных окружения и не передаются в
+аргументах процесса. Старый формат `KEY=value` намеренно отклоняется.
 
 ## Переменные окружения
 
@@ -26,6 +31,9 @@ Sealed Secrets:
 - `OPENROUTER_API_KEY` — ключ OpenRouter API
 - `GITHUB_PAT` / `GITHUB_USERNAME` / `GITHUB_REPO_URL` — для ArgoCD Image Updater
 - `CLOUDFLARE_TOKEN` — токен Cloudflare API для cert-manager и external-dns
+
+`task app-of-apps` по умолчанию использует `app-poly-gitops-k8s@v1.5.0`.
+Переопределение `GITOPS_REVISION` принимает только release tag или полный SHA.
 
 ## Структура
 

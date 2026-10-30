@@ -24,6 +24,7 @@ kubeconfig*
 .env
 secrets/
 *secret*
+!scripts/render-secret-json.py
 
 # IDE
 .idea/
