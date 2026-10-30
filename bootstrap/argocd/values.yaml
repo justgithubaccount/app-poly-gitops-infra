@@ -48,6 +48,8 @@ extraObjects:
             valueFiles:
               - $values/bootstrap/argocd/values.yaml
         - repoURL: https://github.com/justgithubaccount/app-poly-gitops-infra
+          # Keep main until a release newer than v0.1.0 carries an immutable
+          # self-reference. v0.1.0 itself points back to main.
           targetRevision: main
           ref: values
       syncPolicy:

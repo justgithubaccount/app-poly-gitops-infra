@@ -1,12 +1,66 @@
 """Offline behavior checks for the paid smoke guard; no provider calls."""
 
 import json
+import re
 import sys
 import unittest
 from pathlib import Path
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "live_smoke"))
 from budget import BudgetGate, GateError
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+class SourceRevisionContractTests(unittest.TestCase):
+    def setUp(self):
+        workflow_path = REPO_ROOT / ".github/workflows/application-live-smoke.yaml"
+        self.workflow = yaml.load(workflow_path.read_text(), Loader=yaml.BaseLoader)
+        self.job = self.workflow["jobs"]["live"]
+        self.steps = self.job["steps"]
+
+    def test_all_external_sources_use_one_immutable_revision_each(self):
+        expected = {
+            "justgithubaccount/app-poly-gitops-fastapi": "CHAT_BACKEND_REVISION",
+            "justgithubaccount/app-poly-gitops-crewai": "CREWAI_REVISION",
+            "justgithubaccount/app-poly-gitops-ui": "UI_REVISION",
+        }
+
+        self.assertEqual(set(self.job["env"]), set(expected.values()))
+        for revision in self.job["env"].values():
+            self.assertRegex(revision, re.compile(r"^[0-9a-f]{40}$"))
+
+        external_checkouts = {
+            step["with"]["repository"]: step
+            for step in self.steps
+            if step.get("uses") == "actions/checkout@v7"
+            and "repository" in step.get("with", {})
+        }
+        self.assertEqual(set(external_checkouts), set(expected))
+        for repository, variable in expected.items():
+            checkout = external_checkouts[repository]
+            self.assertEqual(checkout["with"]["ref"], "${{ env.%s }}" % variable)
+            self.assertEqual(checkout["with"]["persist-credentials"], "false")
+
+    def test_revision_verification_precedes_provider_secret_exposure(self):
+        verify_index = next(
+            index
+            for index, step in enumerate(self.steps)
+            if step.get("name") == "Verify audited source revisions before exposing the key"
+        )
+        secret_index = next(
+            index
+            for index, step in enumerate(self.steps)
+            if "OPENAI_API_KEY" in step.get("env", {})
+        )
+        self.assertLess(verify_index, secret_index)
+
+        verify_command = self.steps[verify_index]["run"]
+        for variable in ("CHAT_BACKEND_REVISION", "CREWAI_REVISION", "UI_REVISION"):
+            self.assertIn('${%s}' % variable, verify_command)
 
 
 class BudgetTests(unittest.TestCase):

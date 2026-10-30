@@ -48,6 +48,17 @@ The Taskfile and cloud workflow install Argo CD chart `9.1.6` with server
 Ingress disabled and `server.insecure=true`. The public Ingress, if enabled by
 the dev profile, belongs to the GitOps repository.
 
+Local bootstrap renders the chart once, applies that immutable temporary
+render, and retries the same file once on a transient apply failure. The
+self-managed Argo CD values source intentionally remains on `main` until a
+release newer than `v0.1.0` contains an immutable self-reference. Pinning the
+Application to `v0.1.0` is unsafe because that tag's own values file points back
+to `main`, allowing the Application to reconcile its source revision away from
+the requested pin. This exception applies only to Argo CD self-management. The
+local GitOps root defaults to `app-poly-gitops-k8s@v1.5.0`, and the Taskfile
+rejects branch names; an operator can override it only with a semantic release
+tag or full commit SHA.
+
 After bootstrap, one root application selects the environment path:
 
 - `clusters/smoke` for disposable acceptance;
@@ -75,7 +86,7 @@ Terraform destroy.
 
 ### Runner-local application smoke
 
-**Application live OpenAI smoke (no cloud)** starts pinned source revisions on an
+**Application live OpenAI smoke (no cloud)** starts pinned commit revisions on an
 Actions runner. A local transport holds the provider key and enforces request,
 model, input, output-token, and retry bounds. This validates application wiring
 but not Kubernetes, Argo CD, DNS, or cluster telemetry.

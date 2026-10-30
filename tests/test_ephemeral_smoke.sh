@@ -9,6 +9,8 @@ verify_workflow="${repo_root}/.github/workflows/timeweb-debug-verify.yaml"
 
 bash "${repo_root}/tests/test_wait_for_kubernetes.sh"
 bash "${repo_root}/tests/test_wait_for_argocd_application.sh"
+bash "${repo_root}/tests/test_argocd_sync_compat.sh"
+bash "${repo_root}/tests/test_seal.sh"
 bash "${repo_root}/tests/test_fastapi_runtime_smoke.sh"
 bash "${repo_root}/tests/test_verify_jaeger_trace.sh"
 bash "${repo_root}/tests/test_verify_vector_trace.sh"
