@@ -17,7 +17,7 @@ Sealed Secrets:
 - `task seal:openrouter` — создать SealedSecret для OpenRouter API
 - `task seal:github` — создать SealedSecret для GitHub репо
 - `task seal:postgres` — создать SealedSecret для PostgreSQL
-- `task seal:postgree` — временный совместимый alias для `seal:postgres`
+- `task seal:postgree` — legacy-команда, сохраняющая имя Secret `chat-postgree`
 
 `seal:*` — опциональные операторские утилиты, они не вызываются активными
 dev/smoke workflow. Значения читаются из переменных окружения и не передаются в

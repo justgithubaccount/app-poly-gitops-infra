@@ -94,8 +94,9 @@ The `seal:*` tasks are optional manifest-rendering utilities and are not called
 by active dev/smoke workflows. They read secret values from named environment
 variables and write the rendered SealedSecret to stdout. The corrected
 `seal:postgres` name is canonical; `seal:postgree` remains a compatibility
-alias. Legacy `KEY=value` command arguments are rejected because they expose
-secret values through process listings.
+entrypoint that preserves the existing `chat-postgree` Secret name consumed by
+the GitOps repository. Legacy `KEY=value` command arguments are rejected because
+they expose secret values through process listings.
 
 ## Repository structure
 

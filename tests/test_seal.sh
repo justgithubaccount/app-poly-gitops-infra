@@ -50,6 +50,19 @@ assert base64.b64decode(payload["data"]["DATABASE_URL"]).decode() == (
 )
 PY
 
+(
+  cd "${repo_root}"
+  task seal:postgree >"${stdout}" 2>"${stderr}"
+)
+python3 - "${KUBESEAL_INPUT}" <<'PY'
+import json
+import sys
+
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+assert payload["metadata"]["name"] == "chat-postgree"
+assert payload["metadata"]["namespace"] == "chat-api"
+PY
+
 export GITHUB_REPO_URL='https://github.com/example/repo'
 export GITHUB_USERNAME='test-user'
 export GITHUB_PAT='another-dummy-secret'

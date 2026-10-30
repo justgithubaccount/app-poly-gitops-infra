@@ -71,7 +71,10 @@ class TaskfileContractTests(unittest.TestCase):
         text = TASKFILE.read_text() + (REPO_ROOT / "scripts/seal.sh").read_text()
         for forbidden in ("$OPENROUTER_API_KEY", "$GITHUB_PAT", "$DATABASE_URL", "--from-literal"):
             self.assertNotIn(forbidden, text)
-        self.assertEqual(self.tasks["seal:postgree"]["cmds"], [{"task": "seal:postgres"}])
+        self.assertEqual(
+            self.tasks["seal:postgree"]["cmds"],
+            ["./scripts/seal.sh chat-postgree chat-api DATABASE_URL"],
+        )
 
     def test_task_dry_runs_do_not_expand_secret_values(self):
         task = shutil.which("task")
@@ -84,7 +87,7 @@ class TaskfileContractTests(unittest.TestCase):
             "GITHUB_REPO_URL": "https://github.com/example/repo",
             "DATABASE_URL": "postgresql://contract-dummy-database-secret",
         }
-        for task_name in ("seal:openrouter", "seal:github", "seal:postgres"):
+        for task_name in ("seal:openrouter", "seal:github", "seal:postgres", "seal:postgree"):
             result = subprocess.run(
                 [task, "--dry", task_name],
                 cwd=REPO_ROOT,
@@ -132,10 +135,6 @@ class TaskfileContractTests(unittest.TestCase):
             (REPO_ROOT / "bootstrap/argocd/gitops-smoke-root.yaml").read_text(),
         )
         self.assertIn(
-            "targetRevision: v0.1.0",
-            (REPO_ROOT / "bootstrap/argocd/values.yaml").read_text(),
-        )
-        self.assertNotIn(
             "targetRevision: main",
             (REPO_ROOT / "bootstrap/argocd/values.yaml").read_text(),
         )

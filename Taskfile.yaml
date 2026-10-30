@@ -146,9 +146,9 @@ tasks:
       - ./scripts/seal.sh chat-postgres chat-api DATABASE_URL
 
   seal:postgree:
-    desc: "[secret-sensitive] Deprecated alias for seal:postgres"
+    desc: "[secret-sensitive] Legacy PostgreSQL Secret name (chat-postgree)"
     cmds:
-      - task: seal:postgres
+      - ./scripts/seal.sh chat-postgree chat-api DATABASE_URL
 
   # Timeweb CLI
   twc:versions:
