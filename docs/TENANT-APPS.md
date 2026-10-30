@@ -1,160 +1,85 @@
-# Tenant Applications (CNCF/OpenGitOps)
+# Tenant applications
 
-## Overview
+Tenant application desired state lives in
+[`app-poly-gitops-k8s/tenants`](https://github.com/justgithubaccount/app-poly-gitops-k8s/tree/main/tenants).
+This infrastructure repository provisions the cluster and bootstraps Argo CD; it
+does not duplicate application manifests.
 
-This document describes the multi-environment deployment pattern for tenant applications following CNCF GitOps principles.
+## Current applications
 
-## Architecture
+### FastAPI
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Git Repository                        │
-│                    (Single Source of Truth)                  │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  tenants/product-team/apps/chat/                            │
-│  ├── base/                      # Template (DRY)            │
-│  │   ├── application.yaml       # Base ArgoCD Application   │
-│  │   └── kustomization.yaml                                 │
-│  │                                                          │
-│  └── overlays/                  # Env-specific              │
-│      ├── dev/   (secrets + patches)                         │
-│      ├── tst/   (secrets + patches)                         │
-│      ├── stg/   (secrets + patches)                         │
-│      └── prd/   (secrets + patches)                         │
-│                                                              │
-│  clusters/                      # Cluster entry points       │
-│  ├── dev/kustomization.yaml  → overlays/dev                 │
-│  ├── tst/kustomization.yaml  → overlays/tst                 │
-│  ├── stg/kustomization.yaml  → overlays/stg                 │
-│  └── prd/kustomization.yaml  → overlays/prd                 │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                         ArgoCD                               │
-│                                                              │
-│  dev-cluster App ──► clusters/dev/ ──► chat-api App         │
-│  tst-cluster App ──► clusters/tst/ ──► chat-api App         │
-│  stg-cluster App ──► clusters/stg/ ──► chat-api App         │
-│  prd-cluster App ──► clusters/prd/ ──► chat-api App         │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
+`tenants/product-team/apps/chat/base` defines one Argo CD `Application` for
+the versioned `app-poly-gitops-helm` chart. The dev overlay supplies the
+FastAPI image, resources, OpenAI-compatible provider endpoint/model, Vector OTLP
+endpoint, and existing Secret name.
 
-## CNCF GitOps Principles
+`clusters/smoke` uses the same base application with bounded inline values for
+Jaeger and its provider endpoint. The `tst`, `stg`, and `prd` overlays are
+incomplete scaffolding and are not part of the CI environment matrix.
 
-| Principle | Implementation |
-|-----------|----------------|
-| **Declarative** | All config in YAML manifests |
-| **Versioned** | Git as single source of truth |
-| **Pulled automatically** | ArgoCD pulls from Git |
-| **Continuously reconciled** | selfHeal + prune enabled |
+### CrewAI
 
-## Directory Structure
+`tenants/product-team/apps/crewai/runtime` contains Deployment, Service,
+ServiceAccount, and read-only Kubernetes RBAC. Dev and smoke overlays supply
+their telemetry endpoints. The active environment roots patch the Argo CD
+application to a versioned GitOps revision.
 
-### Base Template
+## Composition
 
-`tenants/product-team/apps/chat/base/application.yaml`:
-- Contains the ArgoCD Application template
-- Image Updater annotations for automatic updates
-- Reference to Helm chart repository
-- Automated sync policy
+~~~text
+clusters/dev
+  -> FastAPI dev overlay
+     -> versioned Helm chart
+        -> versioned FastAPI image
+  -> CrewAI application
+     -> dev runtime overlay
+        -> versioned CrewAI image
 
-### Environment Overlays
+clusters/smoke
+  -> FastAPI base plus smoke values
+  -> CrewAI base plus smoke runtime overlay
+  -> Jaeger smoke manifests
+~~~
 
-Each overlay in `overlays/{env}/` contains:
-- **kustomization.yaml** - References base + patches
-- **secrets** - SealedSecrets for env-specific credentials
-- **patches** - JSON patches for Application customization
+Argo CD pulls the declared state and continuously reconciles it. Git history
+provides the versioned, auditable source; automatic reconciliation does not make
+an unreviewed branch a release.
 
-## Environment Configuration
+## Secrets
 
-| Env | Replicas | CPU Limit | Memory | Host |
-|-----|----------|-----------|--------|------|
-| dev | 2 | 1000m | 1Gi | chat-dev.syncjob.ru |
-| tst | 1 | 500m | 512Mi | chat-tst.syncjob.ru |
-| stg | 2 | 1000m | 1Gi | chat-stg.syncjob.ru |
-| prd | 3 | 2000m | 2Gi | chat.syncjob.ru |
+Secrets are runtime inputs and are not stored in plaintext:
 
-## Adding a New Application
+- FastAPI expects `chat-api/chat-openrouter` with
+  `OPENROUTER_API_KEY` in the active profiles.
+- CrewAI expects `crewai-system/crewai-llm` with
+  `openai-api-key`.
+- Dev public networking has additional Cloudflare, Grafana, and HTTP basic-auth
+  Secrets documented in
+  [DEV-WEBS.md](https://github.com/justgithubaccount/app-poly-gitops-k8s/blob/main/docs/DEV-WEBS.md).
 
-1. **Create base template**:
-   ```bash
-   mkdir -p tenants/product-team/apps/new-app/base
-   # Create application.yaml and kustomization.yaml
-   ```
+The disposable Timeweb workflow creates the two application Secrets from the
+`OPENAI_API_KEY` Actions secret. A local environment variable or repository
+secret does not otherwise become a Kubernetes Secret.
 
-2. **Create overlays for each environment**:
-   ```bash
-   for env in dev tst stg prd; do
-     mkdir -p tenants/product-team/apps/new-app/overlays/$env
-     # Create kustomization.yaml with patches
-   done
-   ```
+## Adding an application
 
-3. **Reference from cluster**:
-   ```yaml
-   # clusters/dev/kustomization.yaml
-   resources:
-     - ../../tenants/product-team/apps/new-app/overlays/dev
-   ```
+1. Add the application base under
+   `tenants/<team>/apps/<application>/base`.
+2. Pin its chart, image, or Git source to a reviewed version.
+3. Add an environment overlay only when it has a complete runtime contract.
+4. Reference that overlay from an active `clusters/<environment>` root.
+5. Add rendered-contract tests and include the root in CI before calling the
+   environment supported.
+6. Document required Secrets and mutation permissions without committing values.
 
-## Kustomize Patches Example
+Render the affected root before proposing it:
 
-```yaml
-patches:
-  - target:
-      kind: Application
-      name: chat-api
-    patch: |
-      - op: add
-        path: /metadata/labels/env
-        value: dev
-      - op: add
-        path: /spec/source/helm/values
-        value: |
-          replicaCount: 2
-          ingress:
-            host: chat-dev.syncjob.ru
-```
+~~~bash
+kubectl kustomize clusters/dev > /tmp/app-poly-dev.yaml
+kubectl kustomize clusters/smoke > /tmp/app-poly-smoke.yaml
+~~~
 
-## Image Updater
-
-The base Application includes Image Updater annotations:
-- `argocd-image-updater.argoproj.io/image-list` - Image to track
-- `argocd-image-updater.argoproj.io/chat.update-strategy` - semver
-- `argocd-image-updater.argoproj.io/write-back-method` - git
-
-This enables automatic image tag updates when new versions are pushed.
-
-## Secrets Management
-
-Each environment has its own SealedSecrets:
-- `postgree-secrets.yaml` - Database credentials
-- `openrouter-secrets.yaml` - API keys
-- `github-secrets.yaml` - Git credentials for Image Updater
-
-Create secrets using kubeseal:
-```bash
-kubectl create secret generic chat-openrouter \
-  --from-literal=OPENROUTER_API_KEY=xxx \
-  --dry-run=client -o yaml | \
-  kubeseal --controller-namespace sealed-secrets \
-           --controller-name sealed-secrets \
-           -o yaml > openrouter-secrets.yaml
-```
-
-## Validation
-
-Test kustomize build before committing:
-```bash
-kustomize build tenants/product-team/apps/chat/overlays/dev
-```
-
-## TODO
-
-- [ ] Create SealedSecrets for tst, stg, prd environments
-- [ ] Add tst, stg, prd cluster configurations
-- [ ] Set up separate credentials per environment
+See the GitOps repository
+[architecture](https://github.com/justgithubaccount/app-poly-gitops-k8s/blob/main/docs/architecture.md)
+for the active component and evidence boundaries.
