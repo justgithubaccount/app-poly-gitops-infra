@@ -1,23 +1,20 @@
 #!/bin/bash
-# Create SealedSecret from literals or file
 # Usage:
-#   ./scripts/create-sealed-secret.sh chat-openrouter chat-api OPENROUTER_API_KEY=sk-or-xxx
-#   ./scripts/create-sealed-secret.sh chat-postgree chat-api DATABASE_URL=postgresql://...
-#   ./scripts/create-sealed-secret.sh chat-github argocd --repo url=https://... username=xxx password=xxx
+#   ./scripts/seal.sh chat-openrouter chat-api OPENROUTER_API_KEY=sk-or-xxx
+#   ./scripts/seal.sh chat-postgree chat-api DATABASE_URL=postgresql://...
+#   ./scripts/seal.sh chat-github argocd --repo url=https://... username=xxx password=xxx
 
 set -e
 
 KUBECONFIG="${KUBECONFIG:-$HOME/.kube/timeweb-config}"
 export KUBECONFIG
 
-# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# Controller settings
 CONTROLLER_NAME="${SEALED_SECRETS_CONTROLLER_NAME:-sealed-secrets}"
 CONTROLLER_NAMESPACE="${SEALED_SECRETS_CONTROLLER_NAMESPACE:-kube-system}"
 
@@ -42,7 +39,6 @@ usage() {
     exit 1
 }
 
-# Check args
 if [ $# -lt 3 ]; then
     usage
 fi
@@ -51,14 +47,12 @@ SECRET_NAME="$1"
 NAMESPACE="$2"
 shift 2
 
-# Check for --repo flag
 IS_REPO_SECRET=false
 if [ "$1" == "--repo" ]; then
     IS_REPO_SECRET=true
     shift
 fi
 
-# Check kubeseal
 if ! command -v kubeseal &>/dev/null; then
     echo -e "${RED}✗ kubeseal not found${NC}"
     echo ""
@@ -69,7 +63,6 @@ if ! command -v kubeseal &>/dev/null; then
     exit 1
 fi
 
-# Verify controller is running
 echo -e "${YELLOW}Checking SealedSecrets controller...${NC}" >&2
 if ! kubectl get pods -n "$CONTROLLER_NAMESPACE" -l app.kubernetes.io/name=sealed-secrets --no-headers 2>/dev/null | grep -q Running; then
     echo -e "${RED}✗ SealedSecrets controller not running in ${CONTROLLER_NAMESPACE}${NC}" >&2
@@ -77,7 +70,6 @@ if ! kubectl get pods -n "$CONTROLLER_NAMESPACE" -l app.kubernetes.io/name=seale
 fi
 echo -e "${GREEN}✓${NC} Controller found in ${CONTROLLER_NAMESPACE}" >&2
 
-# Build kubectl create secret command
 KUBECTL_ARGS=()
 for arg in "$@"; do
     if [[ "$arg" == *"="* ]]; then
@@ -102,9 +94,8 @@ if [ "$IS_REPO_SECRET" == "true" ]; then
 fi
 echo "" >&2
 
-# Create the secret
 if [ "$IS_REPO_SECRET" == "true" ]; then
-    # For Argo Image Updater repo secrets - need the label
+    # Argo CD discovers repository credentials through this label.
     kubectl create secret generic "$SECRET_NAME" \
         --namespace="$NAMESPACE" \
         "${KUBECTL_ARGS[@]}" \
@@ -115,7 +106,6 @@ if [ "$IS_REPO_SECRET" == "true" ]; then
         --controller-namespace="$CONTROLLER_NAMESPACE" \
         --format yaml
 else
-    # Regular secret
     kubectl create secret generic "$SECRET_NAME" \
         --namespace="$NAMESPACE" \
         "${KUBECTL_ARGS[@]}" \

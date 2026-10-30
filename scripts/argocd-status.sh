@@ -1,5 +1,4 @@
 #!/bin/bash
-# ArgoCD Status Check Script
 # Usage: ./scripts/argocd-status.sh [app-name]
 
 set -e
@@ -7,14 +6,13 @@ set -e
 KUBECONFIG="${KUBECONFIG:-$HOME/.kube/timeweb-config}"
 export KUBECONFIG
 
-# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Icons (exported for potential subshells)
+# Exported because status formatting may run in subshells.
 export CHECK="✓"
 export CROSS="✗"
 export WARN="⚠"
@@ -25,7 +23,6 @@ echo -e "${BLUE}                    ArgoCD Status Check                         
 echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
 echo ""
 
-# Check kubectl connection
 echo -e "${YELLOW}[1/5] Checking cluster connection...${NC}"
 if kubectl cluster-info &>/dev/null; then
     echo -e "  ${GREEN}${CHECK}${NC} Connected to cluster"
@@ -37,13 +34,11 @@ else
 fi
 echo ""
 
-# Check ArgoCD namespace
 echo -e "${YELLOW}[2/5] Checking ArgoCD pods...${NC}"
 ARGO_PODS=$(kubectl get pods -n argocd --no-headers 2>/dev/null | wc -l)
 if [ "$ARGO_PODS" -gt 0 ]; then
     echo -e "  ${GREEN}${CHECK}${NC} ArgoCD is running ($ARGO_PODS pods)"
 
-    # Show pod status
     kubectl get pods -n argocd --no-headers 2>/dev/null | while read line; do
         POD=$(echo "$line" | awk '{print $1}')
         STATUS=$(echo "$line" | awk '{print $3}')
@@ -61,28 +56,22 @@ else
 fi
 echo ""
 
-# List all applications
 echo -e "${YELLOW}[3/5] ArgoCD Applications...${NC}"
 echo ""
 
-# Get applications with detailed status
 if command -v argocd &>/dev/null && argocd app list &>/dev/null 2>&1; then
-    # Use argocd CLI if available and logged in
     argocd app list --output wide 2>/dev/null | head -20
 else
-    # Fallback to kubectl
     kubectl get applications -n argocd -o custom-columns=\
 'NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,REVISION:.status.sync.revision' 2>/dev/null || echo "  No applications found"
 fi
 echo ""
 
-# Check specific app if provided
 if [ -n "$1" ]; then
     APP_NAME="$1"
     echo -e "${YELLOW}[4/5] Application Details: ${APP_NAME}${NC}"
     echo ""
 
-    # Get app status using kubectl jsonpath (no jq dependency)
     SYNC_STATUS=$(kubectl get application "$APP_NAME" -n argocd -o jsonpath='{.status.sync.status}' 2>/dev/null)
 
     if [ -n "$SYNC_STATUS" ]; then
@@ -92,14 +81,12 @@ if [ -n "$1" ]; then
         APP_PATH=$(kubectl get application "$APP_NAME" -n argocd -o jsonpath='{.spec.source.path}' 2>/dev/null)
         TARGET_REV=$(kubectl get application "$APP_NAME" -n argocd -o jsonpath='{.spec.source.targetRevision}' 2>/dev/null)
 
-        # Sync status color
         case "$SYNC_STATUS" in
             "Synced") SYNC_COLOR=$GREEN ;;
             "OutOfSync") SYNC_COLOR=$YELLOW ;;
             *) SYNC_COLOR=$RED ;;
         esac
 
-        # Health status color
         case "$HEALTH_STATUS" in
             "Healthy") HEALTH_COLOR=$GREEN ;;
             "Progressing") HEALTH_COLOR=$YELLOW ;;
@@ -115,13 +102,11 @@ if [ -n "$1" ]; then
         echo -e "  ${BLUE}Path:${NC}          ${APP_PATH:-N/A}"
         echo ""
 
-        # Show resources summary
         echo -e "  ${YELLOW}Resources:${NC}"
         kubectl get application "$APP_NAME" -n argocd \
             -o jsonpath='{range .status.resources[*]}    {.kind}/{.name}: {.status} ({.health.status}){"\n"}{end}' 2>/dev/null | head -15
         echo ""
 
-        # Show conditions if any
         CONDITIONS=$(kubectl get application "$APP_NAME" -n argocd -o jsonpath='{.status.conditions[*].message}' 2>/dev/null)
         if [ -n "$CONDITIONS" ]; then
             echo -e "  ${YELLOW}Conditions:${NC} $CONDITIONS"
@@ -135,7 +120,6 @@ else
 fi
 echo ""
 
-# Show recent sync history
 echo -e "${YELLOW}[5/5] Recent Activity (last 5 events)...${NC}"
 echo ""
 kubectl get events -n argocd --sort-by='.lastTimestamp' 2>/dev/null | tail -6 | head -5 || echo "  No recent events"
