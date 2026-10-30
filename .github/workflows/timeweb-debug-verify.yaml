@@ -43,7 +43,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Require debug state key
-        run: test -n "${STATE_KEY}"
+        run: |
+          test -n "${STATE_KEY}"
+          bash scripts/validate-retained-workflow-inputs.sh \
+            "${GITOPS_REVISION}" "${EXPECTED_FASTAPI_TAG}" "${EXPECTED_CREWAI_TAG}"
 
       - name: Download retained debug state
         uses: actions/download-artifact@v4
@@ -136,9 +139,10 @@ jobs:
           }
           trap cleanup_fastapi_smoke EXIT
 
-          kubectl -n chat-api create secret generic chat-openrouter \
-            --from-literal=OPENROUTER_API_KEY="${OPENAI_API_KEY}" \
-            --dry-run=client -o yaml | kubectl apply -f -
+          printf '%s' "${OPENAI_API_KEY}" | \
+            kubectl -n chat-api create secret generic chat-openrouter \
+              --from-file=OPENROUTER_API_KEY=/dev/stdin \
+              --dry-run=client -o yaml | kubectl apply -f -
           kubectl -n chat-api rollout restart deployment/chat-api
           kubectl -n chat-api rollout status deployment/chat-api --timeout=10m
 

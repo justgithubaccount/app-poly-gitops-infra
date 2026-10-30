@@ -36,14 +36,17 @@ jobs:
       TF_VAR_location: ${{ inputs.location }}
       TF_VAR_max_runtime_minutes: "120"
       TF_VAR_max_cost_rub: "80"
+      STATE_KEY: ${{ secrets.TIMEWEB_DEBUG_STATE_KEY }}
       TF_DIR: terraform/timeweb
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Require Timeweb token
-        run: test -n "${TF_VAR_timeweb_token}"
+      - name: Require lifecycle credentials
+        run: |
+          test -n "${TF_VAR_timeweb_token}"
+          test -n "${STATE_KEY}"
 
       - name: Require OpenAI key
         env:
@@ -78,14 +81,21 @@ jobs:
         if: steps.apply.outcome == 'success'
         run: bash scripts/wait-for-kubernetes.sh
 
-      - name: Create ephemeral CrewAI LLM secret
+      - name: Create ephemeral application secrets
         if: steps.apply.outcome == 'success'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          kubectl create namespace crewai-system
-          kubectl -n crewai-system create secret generic crewai-llm \
-            --from-literal=openai-api-key="${OPENAI_API_KEY}"
+          kubectl create namespace chat-api --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create namespace crewai-system --dry-run=client -o yaml | kubectl apply -f -
+          printf '%s' "${OPENAI_API_KEY}" | \
+            kubectl -n chat-api create secret generic chat-openrouter \
+              --from-file=OPENROUTER_API_KEY=/dev/stdin \
+              --dry-run=client -o yaml | kubectl apply -f -
+          printf '%s' "${OPENAI_API_KEY}" | \
+            kubectl -n crewai-system create secret generic crewai-llm \
+              --from-file=openai-api-key=/dev/stdin \
+              --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Bootstrap Argo CD
         if: steps.apply.outcome == 'success'
@@ -120,6 +130,47 @@ jobs:
             'curl --silent --show-error --fail --retry 30 --retry-delay 2 --retry-connrefused http://chat-api/health'
           timeout 6m kubectl -n chat-api wait --for=condition=complete job/healthcheck --timeout=5m
           kubectl -n chat-api logs job/healthcheck
+
+      - name: Execute FastAPI application flow
+        if: steps.apply.outcome == 'success'
+        run: |
+          kubectl -n chat-api create configmap fastapi-runtime-smoke \
+            --from-file=smoke.sh=scripts/fastapi-runtime-smoke.sh \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n chat-api delete job fastapi-runtime-smoke --ignore-not-found --wait=true
+          kubectl -n chat-api apply -f - <<'YAML'
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: fastapi-runtime-smoke
+          spec:
+            backoffLimit: 0
+            activeDeadlineSeconds: 600
+            template:
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: smoke
+                    image: curlimages/curl:8.12.1
+                    command: ["/bin/sh", "/smoke/smoke.sh"]
+                    args: ["http://chat-api"]
+                    volumeMounts:
+                      - name: smoke-script
+                        mountPath: /smoke
+                        readOnly: true
+                volumes:
+                  - name: smoke-script
+                    configMap:
+                      name: fastapi-runtime-smoke
+          YAML
+          timeout 11m kubectl -n chat-api wait \
+            --for=condition=complete job/fastapi-runtime-smoke --timeout=10m
+          runtime_output="$(kubectl -n chat-api logs job/fastapi-runtime-smoke)"
+          printf '%s\n' "${runtime_output}"
+          fastapi_trace_id="$(printf '%s\n' "${runtime_output}" | \
+            sed -n 's/^FASTAPI_TRACE_ID=\([0-9a-fA-F]\{32\}\)$/\1/p' | tail -n 1)"
+          test -n "${fastapi_trace_id}"
+          echo "FASTAPI_TRACE_ID=${fastapi_trace_id}" >> "${GITHUB_ENV}"
 
       - name: Smoke CrewAI runtime and read-only cluster access
         if: steps.apply.outcome == 'success'
@@ -181,6 +232,34 @@ jobs:
           done
           kubectl -n crewai-system logs pod/crewai-flowcheck || true
           test "${phase}" = "Succeeded"
+          crewai_output="$(kubectl -n crewai-system logs pod/crewai-flowcheck)"
+          crewai_trace_id="$(printf '%s\n' "${crewai_output}" | \
+            jq -r '.metadata.trace_id // empty')"
+          test -n "${crewai_trace_id}"
+          echo "CREWAI_TRACE_ID=${crewai_trace_id}" >> "${GITHUB_ENV}"
+
+      - name: Verify exported traces in Jaeger
+        if: steps.apply.outcome == 'success'
+        run: |
+          kubectl -n observability rollout status deployment/jaeger --timeout=10m
+          kubectl -n observability port-forward service/jaeger 16686:16686 \
+            >"${RUNNER_TEMP}/jaeger-port-forward.log" 2>&1 &
+          port_forward_pid=$!
+          cleanup_port_forward() {
+            kill "${port_forward_pid}" 2>/dev/null || true
+            wait "${port_forward_pid}" 2>/dev/null || true
+          }
+          trap cleanup_port_forward EXIT
+          for _ in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:16686/api/v3/services >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          bash scripts/verify-jaeger-trace.sh \
+            http://127.0.0.1:16686 "${FASTAPI_TRACE_ID}" chat-api
+          bash scripts/verify-jaeger-trace.sh \
+            http://127.0.0.1:16686 "${CREWAI_TRACE_ID}" auto-k8s-pilot
 
       - name: Kubernetes diagnostics
         if: failure() && steps.apply.outcome == 'success'
@@ -198,16 +277,29 @@ jobs:
           kubectl -n crewai-system logs deployment/crewai --since=30m --tail=-1 || true
           kubectl -n crewai-system logs pod/crewai-flowcheck || true
 
-      - name: Stage retained debug state
-        if: always() && steps.apply.outcome == 'success' && inputs.keep_cluster == true
-        env:
-          STATE_KEY: ${{ secrets.TIMEWEB_DEBUG_STATE_KEY }}
+      - name: Terraform destroy
+        id: destroy
+        if: always() && steps.init.outcome == 'success' && inputs.keep_cluster != true
+        run: timeout 35m terraform -chdir="${TF_DIR}" destroy -auto-approve
+
+      - name: Verify empty Terraform state
+        id: verify_empty
+        if: always() && steps.init.outcome == 'success' && inputs.keep_cluster != true
+        run: test -z "$(terraform -chdir="${TF_DIR}" state list)"
+
+      - name: Stage retained or recovery state
+        if: >-
+          always() && steps.init.outcome == 'success' &&
+          (inputs.keep_cluster == true || steps.destroy.outcome != 'success' ||
+          steps.verify_empty.outcome != 'success')
         run: |
           test -n "${STATE_KEY}"
           debug_state_dir="${RUNNER_TEMP}/timeweb-debug-state"
           mkdir -p "${debug_state_dir}"
           install -m 600 "${TF_DIR}/terraform.tfstate" "${debug_state_dir}/terraform.tfstate"
-          install -m 600 "${KUBECONFIG}" "${debug_state_dir}/kubeconfig"
+          if test -n "${KUBECONFIG:-}" && test -f "${KUBECONFIG}"; then
+            install -m 600 "${KUBECONFIG}" "${debug_state_dir}/kubeconfig"
+          fi
           printf '{"location":"%s"}\n' "${TF_VAR_location}" \
             > "${debug_state_dir}/debug.auto.tfvars.json"
           tar -C "${debug_state_dir}" -czf "${RUNNER_TEMP}/timeweb-debug-state.tar.gz" .
@@ -216,8 +308,11 @@ jobs:
             -out "${RUNNER_TEMP}/timeweb-debug-state.enc" \
             -pass env:STATE_KEY
 
-      - name: Upload retained debug state
-        if: always() && steps.apply.outcome == 'success' && inputs.keep_cluster == true
+      - name: Upload retained or recovery state
+        if: >-
+          always() && steps.init.outcome == 'success' &&
+          (inputs.keep_cluster == true || steps.destroy.outcome != 'success' ||
+          steps.verify_empty.outcome != 'success')
         uses: actions/upload-artifact@v4
         with:
           name: timeweb-debug-state-${{ github.run_id }}
@@ -237,10 +332,14 @@ jobs:
             echo "- Cleanup: run the Timeweb cleanup workflow with provision_run_id=${GITHUB_RUN_ID}"
           } >> "${GITHUB_STEP_SUMMARY}"
 
-      - name: Terraform destroy
-        if: always() && steps.init.outcome == 'success' && inputs.keep_cluster != true
-        run: timeout 35m terraform -chdir="${TF_DIR}" destroy -auto-approve
-
-      - name: Verify empty Terraform state
-        if: always() && steps.init.outcome == 'success' && inputs.keep_cluster != true
-        run: test -z "$(terraform -chdir="${TF_DIR}" state list)"
+      - name: Report recovery state
+        if: >-
+          always() && inputs.keep_cluster != true && steps.init.outcome == 'success' &&
+          (steps.destroy.outcome != 'success' || steps.verify_empty.outcome != 'success')
+        run: |
+          {
+            echo "## Timeweb cleanup requires retry"
+            echo
+            echo "- Encrypted recovery artifact: timeweb-debug-state-${GITHUB_RUN_ID}"
+            echo "- Retry cleanup with provision_run_id=${GITHUB_RUN_ID}"
+          } >> "${GITHUB_STEP_SUMMARY}"

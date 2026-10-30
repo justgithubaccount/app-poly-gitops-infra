@@ -131,7 +131,7 @@ class TaskfileContractTests(unittest.TestCase):
     def test_required_pins_and_workflows_are_preserved(self):
         self.assertIn('ref=v0.1.0', (REPO_ROOT / "terraform/timeweb/main.tf").read_text())
         self.assertIn(
-            "targetRevision: v1.2.0",
+            "targetRevision: v1.5.0",
             (REPO_ROOT / "bootstrap/argocd/gitops-smoke-root.yaml").read_text(),
         )
         self.assertIn(
