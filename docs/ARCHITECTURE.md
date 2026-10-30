@@ -72,17 +72,29 @@ prove that every child is healthy.
 ### Disposable smoke
 
 The **Timeweb smoke and debug** workflow plans and applies the cost-guarded
-cluster, installs Argo CD, reconciles the versioned smoke root, checks FastAPI and
-CrewAI, and destroys the cluster by default. Cleanup runs in the same job even
-after an application check fails.
+cluster, installs Argo CD, and reconciles `clusters/smoke` from the released
+`app-poly-gitops-k8s@v1.5.0` root. It executes a real FastAPI project/chat flow,
+the deterministic CrewAI Kubernetes health flow, and verifies both trace IDs in
+the smoke Jaeger backend. It destroys the cluster by default. Cleanup runs in
+the same job even after an application check fails.
+
+The older `v1.2.0` smoke pin was an intentional historical acceptance point but
+no longer matched the current Jaeger and application contract. The workflow is
+now advanced only to an existing reviewed GitOps release, never to `main`.
 
 ### Retained debugging
 
 `keep_cluster=true` encrypts Terraform state and kubeconfig with
 `TIMEWEB_DEBUG_STATE_KEY` and stores the artifact for one day. Subsequent
 verification restores only the kubeconfig; dev promotion restores state and
-performs a bounded resize. **Timeweb cleanup** restores the same state and runs
-Terraform destroy.
+performs a bounded resize. The retained workflows accept only semantic GitOps
+release tags and semantic application image tags before reading state or
+performing cloud work.
+
+**Timeweb cleanup** restores the exact state and runs Terraform destroy. When
+automatic destroy or empty-state verification fails, both the disposable and
+cleanup workflows upload a new one-day encrypted recovery artifact and report
+its run ID. A successful default destroy uploads no state.
 
 ### Runner-local application smoke
 
@@ -94,8 +106,10 @@ but not Kubernetes, Argo CD, DNS, or cluster telemetry.
 ## Runtime data and credentials
 
 Credentials are supplied as local environment variables, GitHub Actions secrets,
-or Kubernetes Secrets. They are not committed. Retained Terraform state and
-kubeconfig are encrypted before artifact upload and expire after one day.
+or Kubernetes Secrets. They are not committed. Cloud workflows stream LLM keys
+to `kubectl` through standard input instead of placing values in process
+arguments. Retained Terraform state and kubeconfig are encrypted before artifact
+upload and expire after one day.
 
 The cloud workflow creates short-lived application Secrets needed by smoke
 checks. Public dev networking also requires the separately documented Cloudflare,

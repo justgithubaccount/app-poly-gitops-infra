@@ -67,10 +67,60 @@ jobs:
           terraform_version: "1.13.5"
 
       - name: Terraform init
+        id: init
         run: terraform -chdir="${TF_DIR}" init
 
       - name: Terraform destroy
+        id: destroy
         run: timeout 35m terraform -chdir="${TF_DIR}" destroy -auto-approve
 
       - name: Verify empty Terraform state
+        id: verify_empty
+        if: always() && steps.init.outcome == 'success'
         run: test -z "$(terraform -chdir="${TF_DIR}" state list)"
+
+      - name: Stage retry state when cleanup is incomplete
+        if: >-
+          always() && steps.init.outcome == 'success' &&
+          (steps.destroy.outcome != 'success' || steps.verify_empty.outcome != 'success')
+        run: |
+          retry_state_dir="${RUNNER_TEMP}/retry-debug-state"
+          mkdir -p "${retry_state_dir}"
+          install -m 600 "${TF_DIR}/terraform.tfstate" "${retry_state_dir}/terraform.tfstate"
+          if test -f "${TF_DIR}/debug.auto.tfvars.json"; then
+            install -m 600 "${TF_DIR}/debug.auto.tfvars.json" \
+              "${retry_state_dir}/debug.auto.tfvars.json"
+          fi
+          if test -f "${RUNNER_TEMP}/restored-debug-state/kubeconfig"; then
+            install -m 600 "${RUNNER_TEMP}/restored-debug-state/kubeconfig" \
+              "${retry_state_dir}/kubeconfig"
+          fi
+          tar -C "${retry_state_dir}" \
+            -czf "${RUNNER_TEMP}/timeweb-debug-state.tar.gz" .
+          openssl enc -aes-256-cbc -salt -pbkdf2 \
+            -in "${RUNNER_TEMP}/timeweb-debug-state.tar.gz" \
+            -out "${RUNNER_TEMP}/timeweb-debug-state.enc" \
+            -pass env:STATE_KEY
+
+      - name: Upload retry state when cleanup is incomplete
+        if: >-
+          always() && steps.init.outcome == 'success' &&
+          (steps.destroy.outcome != 'success' || steps.verify_empty.outcome != 'success')
+        uses: actions/upload-artifact@v4
+        with:
+          name: timeweb-debug-state-${{ github.run_id }}
+          path: ${{ runner.temp }}/timeweb-debug-state.enc
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Report cleanup retry
+        if: >-
+          always() && steps.init.outcome == 'success' &&
+          (steps.destroy.outcome != 'success' || steps.verify_empty.outcome != 'success')
+        run: |
+          {
+            echo "## Timeweb cleanup requires retry"
+            echo
+            echo "- Encrypted recovery artifact: timeweb-debug-state-${GITHUB_RUN_ID}"
+            echo "- Retry cleanup with provision_run_id=${GITHUB_RUN_ID}"
+          } >> "${GITHUB_STEP_SUMMARY}"

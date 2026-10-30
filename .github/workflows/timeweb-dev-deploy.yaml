@@ -63,6 +63,8 @@ jobs:
         run: |
           test -n "${TF_VAR_timeweb_token}"
           test -n "${STATE_KEY}"
+          bash scripts/validate-retained-workflow-inputs.sh \
+            "${GITOPS_REVISION}" "${EXPECTED_FASTAPI_TAG}" "${EXPECTED_CREWAI_TAG}"
 
       - name: Download retained debug state
         uses: actions/download-artifact@v4
@@ -140,12 +142,14 @@ jobs:
           test -n "${OPENAI_API_KEY}"
           kubectl create namespace chat-api --dry-run=client -o yaml | kubectl apply -f -
           kubectl create namespace crewai-system --dry-run=client -o yaml | kubectl apply -f -
-          kubectl -n chat-api create secret generic chat-openrouter \
-            --from-literal=OPENROUTER_API_KEY="${OPENAI_API_KEY}" \
-            --dry-run=client -o yaml | kubectl apply -f -
-          kubectl -n crewai-system create secret generic crewai-llm \
-            --from-literal=openai-api-key="${OPENAI_API_KEY}" \
-            --dry-run=client -o yaml | kubectl apply -f -
+          printf '%s' "${OPENAI_API_KEY}" | \
+            kubectl -n chat-api create secret generic chat-openrouter \
+              --from-file=OPENROUTER_API_KEY=/dev/stdin \
+              --dry-run=client -o yaml | kubectl apply -f -
+          printf '%s' "${OPENAI_API_KEY}" | \
+            kubectl -n crewai-system create secret generic crewai-llm \
+              --from-file=openai-api-key=/dev/stdin \
+              --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Reconcile clusters/dev through GitOps
         if: steps.apply.outcome == 'success'

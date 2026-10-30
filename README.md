@@ -33,11 +33,13 @@ The no-cloud application smoke is dispatched from the default branch with
 `confirm_live=true`. It uses the repository `OPENAI_API_KEY` through a
 runner-local budget guard and uploads only a sanitized summary.
 
-The Timeweb smoke workflow requires `TF_VAR_TIMEWEB_TOKEN` and
-`OPENAI_API_KEY`. Select `keep_cluster=true` only for an interactive debug
-session; it also requires `TIMEWEB_DEBUG_STATE_KEY` and uploads encrypted state
-for one day. Always run **Timeweb cleanup** with the retained provisioning run ID
-when debugging is complete.
+The Timeweb smoke workflow requires `TF_VAR_TIMEWEB_TOKEN`, `OPENAI_API_KEY`,
+and `TIMEWEB_DEBUG_STATE_KEY`. The state key lets the default path preserve an
+encrypted recovery artifact if automatic destroy is incomplete; successful
+default cleanup uploads no state. Select `keep_cluster=true` only for an
+interactive debug session. Retained and recovery artifacts expire after one
+day. Always run **Timeweb cleanup** with the reported run ID when a cluster is
+retained or cleanup needs a retry.
 
 ## Local provisioning
 
@@ -88,7 +90,8 @@ persistent environment, copy `terraform/timeweb/backend.s3.tf.example` to a
 | `max_cost_rub` | `80` | Estimated-cost ceiling |
 
 Argo CD chart values are in `bootstrap/argocd/values.yaml`. The smoke root is
-`bootstrap/argocd/gitops-smoke-root.yaml`.
+`bootstrap/argocd/gitops-smoke-root.yaml` and pins the current released smoke
+contract, `app-poly-gitops-k8s@v1.5.0`.
 
 The `seal:*` tasks are optional manifest-rendering utilities and are not called
 by active dev/smoke workflows. They read secret values from named environment
