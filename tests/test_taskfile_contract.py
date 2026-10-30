@@ -106,7 +106,7 @@ class TaskfileContractTests(unittest.TestCase):
         self.assertIn("Retrying the same rendered manifest once", commands)
 
     def test_app_of_apps_uses_a_guarded_immutable_revision(self):
-        self.assertEqual(self.document["vars"]["GITOPS_REVISION"], "v1.5.0")
+        self.assertEqual(self.document["vars"]["GITOPS_REVISION"], "v1.5.1")
         commands = "\n".join(self.tasks["app-of-apps"]["cmds"])
         self.assertNotIn("/main/", commands)
         self.assertIn("{{.GITOPS_REVISION}}", commands)
@@ -131,7 +131,7 @@ class TaskfileContractTests(unittest.TestCase):
     def test_required_pins_and_workflows_are_preserved(self):
         self.assertIn('ref=v0.1.0', (REPO_ROOT / "terraform/timeweb/main.tf").read_text())
         self.assertIn(
-            "targetRevision: v1.5.0",
+            "targetRevision: v1.5.1",
             (REPO_ROOT / "bootstrap/argocd/gitops-smoke-root.yaml").read_text(),
         )
         self.assertIn(

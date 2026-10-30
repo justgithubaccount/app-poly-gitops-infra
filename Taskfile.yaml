@@ -2,7 +2,7 @@ version: '3'
 
 vars:
   ARGOCD_VERSION: "9.1.6"
-  GITOPS_REVISION: "v1.5.0"
+  GITOPS_REVISION: "v1.5.1"
   TF_DIR: terraform/timeweb
   KUBECONFIG_PATH: "{{.HOME}}/.kube/timeweb-config"
 

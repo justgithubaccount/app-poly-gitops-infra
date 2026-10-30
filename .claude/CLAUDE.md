@@ -32,7 +32,7 @@ dev/smoke workflow. Значения читаются из переменных 
 - `GITHUB_PAT` / `GITHUB_USERNAME` / `GITHUB_REPO_URL` — для ArgoCD Image Updater
 - `CLOUDFLARE_TOKEN` — токен Cloudflare API для cert-manager и external-dns
 
-`task app-of-apps` по умолчанию использует `app-poly-gitops-k8s@v1.5.0`.
+`task app-of-apps` по умолчанию использует `app-poly-gitops-k8s@v1.5.1`.
 Переопределение `GITOPS_REVISION` принимает только release tag или полный SHA.
 
 ## Структура

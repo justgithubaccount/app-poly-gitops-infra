@@ -111,7 +111,7 @@ root_app="${repo_root}/bootstrap/argocd/gitops-smoke-root.yaml"
 test -f "${root_app}"
 grep -q 'name: gitops-smoke-root' "${root_app}"
 grep -q 'repoURL: https://github.com/justgithubaccount/app-poly-gitops-k8s.git' "${root_app}"
-grep -q 'targetRevision: v1.5.0' "${root_app}"
+grep -q 'targetRevision: v1.5.1' "${root_app}"
 grep -q 'path: clusters/smoke' "${root_app}"
 ! grep -Eq 'targetRevision: [0-9a-f]{40}' "${root_app}"
 
