@@ -13,7 +13,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Taskfile validation
       - name: Install Task
         uses: arduino/setup-task@v2
         with:
@@ -22,7 +21,6 @@ jobs:
       - name: Validate Taskfile
         run: task --list
 
-      # Terraform validation
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -37,7 +35,6 @@ jobs:
       - name: Terraform Validate
         run: terraform -chdir=terraform/timeweb validate
 
-      # YAML linting
       - name: Lint YAML files
         uses: ibiqlik/action-yamllint@v3
         with:
@@ -51,7 +48,6 @@ jobs:
                 check-keys: false
               document-start: disable
 
-      # Shell scripts
       - name: Check shell scripts
         uses: ludeeus/action-shellcheck@master
         with:
@@ -75,14 +71,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Check for secrets in code
       - name: Gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: false
 
-      # Terraform security
       - name: tfsec
         uses: aquasecurity/tfsec-action@v1.0.3
         with:

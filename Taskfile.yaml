@@ -1,4 +1,3 @@
-# https://taskfile.dev
 version: '3'
 
 vars:
@@ -43,7 +42,7 @@ tasks:
       - chmod 600 {{.KUBECONFIG_PATH}}
       - echo "Kubeconfig saved to {{.KUBECONFIG_PATH}}"
 
-  # ArgoCD Bootstrap
+  # Argo CD bootstrap
   bootstrap:
     desc: "Bootstrap ArgoCD in cluster"
     vars:
@@ -93,7 +92,7 @@ tasks:
       - task: app-of-apps
       - task: argocd-password
 
-  # === Diagnostics ===
+  # Diagnostics
   status:
     desc: "Check ArgoCD status (usage: task status -- [app-name])"
     cmds:
@@ -109,7 +108,7 @@ tasks:
     cmds:
       - ./scripts/check-nodes.sh
 
-  # === Secrets ===
+  # Secrets
   seal:
     desc: "Create SealedSecret (usage: task seal -- name namespace KEY=value)"
     cmds:
@@ -130,7 +129,7 @@ tasks:
     cmds:
       - ./scripts/seal.sh chat-postgree chat-api DATABASE_URL=$DATABASE_URL
 
-  # === Timeweb CLI ===
+  # Timeweb CLI
   twc:versions:
     desc: "List available K8s versions"
     cmds:

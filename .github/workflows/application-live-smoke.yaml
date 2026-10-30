@@ -8,8 +8,6 @@ on:
         type: boolean
         required: true
         default: false
-  # Bootstrap/run the new workflow before any merge. Other branch pushes
-  # and PRs never receive the provider secret or trigger paid requests.
   push:
     branches: [codex/live-application-smoke]
     paths:
